@@ -1,7 +1,8 @@
 library(FKF)
 set.seed(456)
+Num <- 50
 N <- vector()
-N[1] <- 50
+N[1] <- Num
 Time = 1000
 L = 2
 A = 0.42
@@ -9,27 +10,30 @@ B = 1
 C = 1
 D = 0.3
 d = 1
-X <- matrix(NA, Time, N)
-X_ <- matrix(NA, Time, N)
-w <- matrix(NA, Time, N)
+k <- 5
+tau <- 0.5
+X <- matrix(NA, Time, Num)
+X_ <- matrix(NA, Time, Num)
+w <- matrix(NA, Time, Num)
 X_true <- vector()
 obs <- vector()
 kappa = 0.5
 psi_pa <- matrix(NA, nrow = Time, ncol = 2)
+Z <- vector()
 
 dt <- ct <- 0
 Tt <- as.matrix(A)
 P0 <- Zt <- Ht <- Gt <- as.matrix(1)
 a0 <- 0
 
-ESS <- function(n,w, is.log=FALSE){
+ESS <- function(t,l,w, is.log=FALSE){
   if(is.log) {
-    mx <- max(w[n-1,])
-    s <- sum(exp(w[n-1,]-mx))
-    ess <- 1/sum((exp(w[n-1,]-mx)/s)^2)
+    mx <- max(w[t-1,1:N[l]])
+    s <- sum(exp(w[t-1,1:N[l]]-mx))
+    ess <- 1/sum((exp(w[t-1,1:N[l]]-mx)/s)^2)
   }else{
-    s <- sum(w[n-1,])
-    ess <- 1/sum((w[n-1,]/s)^2) 
+    s <- sum(w[t-1,1:N[l]])
+    ess <- 1/sum((w[t-1,1:N[l]]/s)^2) 
   }
   return(ess)  
 }
@@ -65,6 +69,7 @@ f_aux <- function(x, psi_pa, t){
   return(rnorm(1, (psi_pa[t,2]^2*A*x +psi_pa[t,1])/(psi_pa[t,2]^2+1), 
                sqrt(psi_pa[t,2]^2 / (psi_pa[t,2]^2+1))))  #f_2:T 
 }
+
 ####APF####
 APF <- function(psi_pa, l){
   #l >= 2
@@ -95,6 +100,7 @@ APF <- function(psi_pa, l){
       }
     }else{
       
+      
       #b)
       for(i in 1:N[l]){
         
@@ -114,18 +120,18 @@ APF <- function(psi_pa, l){
   }
   print(paste0('re=',re))
   
-  return(list(obs, X, w, Z))
+  return(list(X, w, Z))
 }
 
 ####Psi####
-Psi <- function(n, obs, X){
+Psi <- function(l, n, X){
   
   for(t in n:(n-L+1)){
     
     print(t)
     
     if(t == n){
-      psi[t,1:N[l]] <- dnorm(X[t,1:N[l]], obs[t])   #observation should be t or what? total iteration is Time? t is the number of iteration? we need to keep obs[n-L+1:n]?
+      psi[t,1:N[l]] <- dnorm(X[t,1:N[l]], obs[t])   
       
     }else{
       
@@ -158,10 +164,39 @@ Psi <- function(n, obs, X){
   return(psi_pa)
   
 }
+####init-APF####
+init_APF <- function(X, l, n){
+  l = 1
+  re = 0
+  for(t in (n-L+1):n){
+    print(t)
+    
+    if(ESS(t,l,w, is.log=TRUE) <= kappa*N[l]){
+      
+      re = re + 1
+      
+      w_ <- w[t-1,1:N[l]]/sum(w[t-1,1:N[l]])
+      mix <- sample(1:N[l], N[l], replace = TRUE, prob = w_)
+      X[t,1:N[l]] <- rnorm(Time) + A*X[t-1, mix]   
+      w[t,1:N[l]] <- dnorm(X[t,1:N[l]], obs[t], log = TRUE) 
+      
+    }else{
+      X[t,1:N[l]] <- rnorm(Time) + A*X[t-1,1:N[l]] 
+      w[t,1:N[l]] <- w[t-1,1:N[l]] + dnorm(X[t,1:N[l]], obs[t], log = TRUE)  
+    }
+  }
+  return(list(X=X, w=w))
+}
 
 ####psi-APF####
-psi-APF <- function(){
+psi_APF <- function(n, X){
   l = 1
+  
+  Z[1] = 0
+  for(t in 1:Time){
+    Z[1] = Z[1] + log(mean(apply(as.matrix(X[t,1:N[l]]),1,function(x) dnorm(x, obs[t]))))
+  }
+  
   while(TRUE){
     
     #a)
@@ -180,10 +215,9 @@ psi-APF <- function(){
     if(l <= k | (Num(Z, l, k) >= tau)){
       #psi^{l+1}
       
-      psi_pa <- Psi(l, obs, X) 
+      psi_pa <- Psi(l, n, X) 
       
-      
-      if(l > k & N[max(l-k,1)] == N[l] & is.unsorted(Z[max(l-k,1):l])){   #新bspf要像iAPF一样随着l而改变N吗？
+      if(l > k & N[max(l-k,1)] == N[l] & is.unsorted(Z[max(l-k,1):l])){  
         N[l+1] <- 2*N[l]
         
       }else{
@@ -197,14 +231,15 @@ psi-APF <- function(){
       l <- l+1
     }else break
   }
+  return(psi_pa)
 }
 
 
-####BSPF####
+####init-BSPF####
 Init <- function(){
   #X_1:L sample from q(x_1:L)=p(x_1:L|y_1:L)=p(x_L|y_1:L)*(from 1:n-1 p(x_p|y_1:p)*f)
   if(L == 1){
-    X[1,] <-  rnorm(N, (C*obs[1]*D^2)/(D+C^2), sqrt(D/(D+C^2)))  #pass
+    X[1,] <-  rnorm(Num, (C*obs[1]*D^2)/(D+C^2), sqrt(D/(D+C^2)))  #pass
     
     w[1,] <- log((2*pi*(1+D))^(-1/2)*exp((-1/2)*(obs[1])^2/(1+D)))  #pass
     
@@ -212,7 +247,7 @@ Init <- function(){
     a0 <- 0
     fkf.mu <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L]))$att
     fkf.var <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L]))$Ptt
-    X[L,] <- rnorm(N, fkf.mu[L], sqrt(fkf.var[L]))
+    X[L,] <- rnorm(Num, fkf.mu[L], sqrt(fkf.var[L]))
     for(p in (L-1):1){
       for(i in 1:N){
         X[p,i] <- rnorm(1, (A*X[p+1,i]*fkf.var[p] + fkf.mu[p])/(A^2*fkf.var[p] + 1),sqrt(fkf.var[p]/(A^2*fkf.var[p] + 1)))
@@ -227,19 +262,19 @@ Init <- function(){
 X <- Init()$X
 w <- Init()$w
 
-Z = 0
+####BSPF####
 re = 0
 for(n in (L+1):Time){
   print(n)
-  if(ESS(n,w, is.log =  TRUE) <= kappa*N){
+  if(ESS(n,1,w, is.log =  TRUE) <= kappa*N){
     re = re + 1
     mx <- max(w[n-1,])
     w_ <- exp(w[n-1,]-mx)/sum(exp(w[n-1,] - mx))
     Z = Z + log(mean(exp(w[n-1,]-mx))) + mx
-    s <- sample(1:N, size=N, replace=TRUE, prob=w_) 
+    s <- sample(1:Num, size=Num, replace=TRUE, prob=w_) 
     if(L == 1){
       
-      for(i in 1:N){
+      for(i in 1:Num){
         X[n,i] <- rnorm(1, ((1-B*C^2/(C^2*B+D))*A*X[n-1,s[i]]+obs[n]*B*C/(C^2*B+D))/2, sqrt((1-B*C^2/(C^2*B+D))*B))
         #rnorm(1, ((1-B*C^2/(C^2*B+D))*A*X[n-1,s[i]]+obs[n]*B*C/(C^2*B+D))/2, sqrt((1-B*C^2/(C^2*B+D))*B))
       }  #pass
@@ -247,23 +282,31 @@ for(n in (L+1):Time){
       ##pass
       
     }else{
-      X[n,i] <- A*X[n-1,i]+N*rnorm(1)
-      for(i in 1:N){
-        
-        psi_pa <- Psi(obs, X)
-        #psi-APF here!!!
-        
-        for(p in n:(n-L+1)){
-          X[p,i] <- f_aux(x, psi_pa, p)
+      X_ <- init_APF(X, 1, n)$X #需要改变从n-L+1到n值吗？
+      
+      psi_pa <- psi_APF(n, X_)
+      P <- rep(0,Num)
+      P_ <- rep(0,Num)
+      for(p in n:(n-L+1)){
+        for(i in 1:Num){
+          X_[p,i] <- f_aux(X_[p,mix[i]], psi_pa, p)
+          P[i] <- P[i] + dnorm(X_[p,mix[i]], (A*X_[p-1,mix[i]]+C*obs[n])/2, 1/(1+C^2), log = TRUE)
         }
-        
       }
-      w[n,] <- dnorm(obs[n], A*fkf.mu[L-1], sqrt(B^2+D^2+A^2*fkf.var[L-1]), log = TRUE) #weights change to f_aux, g_aux?
+      
+      for(p in (n-1):(n-L+1)){
+        for(i in 1:Num){
+          P_[i] <- P_[i] + dnorm(X[p,mix[i]], (A*X[p-1,mix[i]]+C*obs[n])/2, 1/(1+C^2), log = TRUE)
+        }
+      }
+      
+      w[n,] <- P + f_aux(X_[n-1,mix], psi_pa, n-1) - P_ -  f_aux(X_[n,mix], psi_pa, n)
+      X <- X_
     }
     
   }else{
     if(L == 1){
-      for(i in 1:N){
+      for(i in 1:Num){
         X[n,i] <- rnorm(1, ((1-B*C^2/(C^2*B+D))*A*X[n-1,i]+obs[n]*B*C/(C^2*B+D)), sqrt((1-B*C^2/(C^2*B+D))*B))
         #rnorm(1, ((1-B*C^2/(C^2*B+D))*A*X[n-1,i]+obs[n]*B*C/(C^2*B+D)), sqrt((1-B*C^2/(C^2*B+D))*B))  #pass
         
@@ -272,31 +315,28 @@ for(n in (L+1):Time){
       }
       
     }else{
-      X[n,i] <- A*X[n-1,i]+N*rnorm(1)
-      for(i in 1:N){
-        
-        psi <- Psi(obs, X)
-        f.tilda <- f_aux()
-        
-        X[n,i] <- rnorm(1, psi_pa[n, 1], sqrt(psi_pa[n,2]))
-        for(p in (n-1):(n-L+1)){
-          X[p,i] <- f_aux()
-        }  #pass
-        
-        w[n,i] = w[n-1,i] + dnorm(obs[n], A*fkf.mu[L-1], sqrt(B^2+D^2+A^2*fkf.var[L-1]), log = TRUE)  #pass
-        #改
+      X_ <- init_APF(X, 1, n)$X #需要改变从n-L+1到n值吗？
+      
+      psi_pa <- psi_APF(n, X_)
+      P <- rep(0,Num)
+      P_ <- rep(0,Num)
+      for(p in n:(n-L+1)){
+        for(i in 1:N){
+          X_[p,i] <- f_aux(X_[p,i], psi_pa, p)
+          P[i] <- P[i] + dnorm(X_[p,i], (A*X_[p-1,i]+C*obs[n])/2, 1/(1+C^2), log = TRUE)
+        }
       }
+      
+      for(p in (n-1):(n-L+1)){
+        for(i in 1:Num){
+          P_[i] <- P_[i] + dnorm(X[p,i], (A*X[p-1,i]+C*obs[n])/2, 1/(1+C^2), log = TRUE)
+        }
+      }
+      
+      for(i in 1:N){
+        w[n,i] <- w[n-1,i] + f_aux(X_[n-1,i], psi_pa, n-1) - P_ -  f_aux(X_[n,i], psi_pa, n)
+      }
+      X <- X_
     }
   }
 }
-
-
-#for initial: the mu is f? or from L+1: mu is f. change mu to f from beginning
-  
-  equal to use the whole iAPF with the correct initial, trans and obs distribution to get psi_n-L+1:n for each iteration
-
-we get N psi for each n-L+1:N and choose a final one. We need "a series of" psi (at the same time?), how to get them without slow?
-  
-after: use psi_n-L+1:n to be p(x_n-L+1:n|y_n-L+1:n, x_n-L) (we get N psi for N particles X)
-  
-

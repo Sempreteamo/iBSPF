@@ -1,14 +1,14 @@
 library(FKF)
 set.seed(456)
-Num <- 50
+Num <- 20
 N <- vector()
 N[1] <- Num
-Time = 10
-L = 2
+Time = 40
+L = 18
 A = 0.42
 B = 1
 C = 1
-D = 0.3
+D = 1
 d = 1
 k <- 5
 tau <- 0.5
@@ -63,19 +63,16 @@ mu_aux <- function(psi_pa, l, N, t){
 }
 
 g_aux <- function(y, x, t, psi_pa, n){  
-  if(t == (n-L)){
-    return(dnorm(x, y)*psi_tilda(x, psi_pa, t, n)*(2*pi*(psi_pa[1, d+1]^2+1))^
+  if(t == (n-L+1)){
+    return(dnorm(x, y)*psi_tilda(x, psi_pa, t, n)*(2*pi*(psi_pa[t, d+1]^2+1))^
              (-1/2)*exp((-1/2)*(-psi_pa[t, 1])^2/(psi_pa[t,  d+1]^2+1))/psi_t(x, psi_pa, t, n))  #initialisation of g = t=1 or t=L?
   }else{
     return(dnorm(x, y)*psi_tilda(x, psi_pa, t, n)/psi_t(x, psi_pa, t, n))  #g_2:T 
   }
 }
 
+
 f_aux <- function(x, psi_pa, t){
-  x_bad <<- x
-  psi_pa_bad <<- psi_pa
-  t_bad <<- t
-  
   return(rnorm(1, (psi_pa[t,2]^2*A*x +psi_pa[t,1])/(psi_pa[t,2]^2+1), 
                sqrt(psi_pa[t,2]^2 / (psi_pa[t,2]^2+1))))  #f_2:T 
 }
@@ -111,17 +108,15 @@ APF <- function(psi_pa, l, Z_apf, N){
   
   Z_apf[l] <- 0
   
-  X_apf[n-L,1:N[l]] <- mu_aux(psi_pa, l, N, n-L)  
+  X_apf[n-L+1,1:N[l]] <- mu_aux(psi_pa, l, N, n-L+1)  
   
   for(i in 1:N[l]){
-    w_apf[n-L,i] <- log(g_aux(obs[1], X_apf[n-L,i],1, psi_pa, n)) #weights g(obs[1,], X[1,i,])*psi_tilda(X[1,i,], psi_pa, 2)  
+    w_apf[n-L+1,i] <- log(g_aux(obs[n-L+1], X_apf[n-L+1,i],n-L+1, psi_pa, n)) 
   }
   re=0
   #t=2:T
   #2. conditional sample
-  for(t in (n-L+1):n){
-    
-    print(t)
+  for(t in (n-L+2):n){
     
     #a)
     
@@ -149,8 +144,6 @@ APF <- function(psi_pa, l, Z_apf, N){
   mx <- max(w_apf[n, 1:N[l]])
   Z_apf[l] <- Z_apf[l] + log(mean(exp(w_apf[n, 1:N[l]]-mx))) + mx
   
-  print(paste0('re=',re))
-  
   return(list(X_apf, w_apf, Z_apf))
 }
 
@@ -158,7 +151,7 @@ APF <- function(psi_pa, l, Z_apf, N){
 Psi <- function(l, n, X_apf, N){
   psi <- matrix(NA, nrow = Time, ncol = N[l])
   
-  for(t in n:(n-L)){  
+  for(t in n:(n-L+1)){  
     
     print(t)
     
@@ -201,11 +194,10 @@ init_APF <- function(){
   X_init <- matrix(NA, Time, N[l])
   w_init <- matrix(NA, Time, N[l])
   
-  X_init[n-L,1:N[l]] <- rnorm(N[l])  
-  w_init[n-L,1:N[l]] <- dnorm(X_init[n-L,1:N[l]],obs[1], log = TRUE)
+  X_init[n-L+1,1:N[l]] <- rnorm(N[l])  
+  w_init[n-L+1,1:N[l]] <- dnorm(X_init[n-L+1,1:N[l]],obs[n-L+1], log = TRUE)
   
-  for(t in (n-L+1):n){
-    print(t)
+  for(t in (n-L+2):n){
     
     if(ESS(t,w_init, is.log=TRUE) <= kappa*N[l]){
       re = re + 1
@@ -235,7 +227,6 @@ psi_APF <- function(n, X_apf, Z_apf){
   
   while(TRUE){
     
-    #a)
     output <- list()
     
     if(l != 1){
@@ -259,8 +250,6 @@ psi_APF <- function(n, X_apf, Z_apf){
         N[l+1] <- N[l]
       }
       
-      print(paste0('Z_apf[l]=', Z_apf[l]))
-      
       l <- l+1
     }else break
   }
@@ -269,6 +258,10 @@ psi_APF <- function(n, X_apf, Z_apf){
 
 
 ####init-BSPF####
+psi.before <- matrix()
+psi.now <- matrix()
+n <- L
+
 Init <- function(){
   #X_1:L sample from q(x_1:L)=p(x_1:L|y_1:L)=p(x_L|y_1:L)*(from 1:n-1 p(x_p|y_1:p)*f)
   if(L == 1){
@@ -286,20 +279,33 @@ Init <- function(){
         X[p,i] <- rnorm(1, (A*X[p+1,i]*fkf.var[p] + fkf.mu[p])/(A^2*fkf.var[p] + 1),sqrt(fkf.var[p]/(A^2*fkf.var[p] + 1)))
       } #pass
     }
+    
+    output <- init_APF()
+    X_apf <- output[[1]]
+    w_apf <- output[[2]]
+    Z_apf <- output[[3]]
+    
+    psi_pa <- psi_APF(n, X_apf, Z_apf)
+    psi.before <- psi.now
+    psi.now <- psi_pa
+    
     w[L,] <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L]))$logLik  #pass
     
   }
-  return(list(X=X, w=w))
+  return(list(X=X, w=w, psi.now=psi.now))
 }
 
-X <- Init()$X
-w <- Init()$w
+output <-  Init()
+X <- output[[1]]
+w <- output[[2]]
+psi.now <- output[[3]]
 
 ####BSPF####
 re = 0
+
 for(n in (L+1):Time){
   print(n)
-  if(ESS(n,w, is.log =  TRUE) <= kappa*N){
+  if(ESS(n,w, is.log = TRUE) <= kappa*N){
     re = re + 1
     mx <- max(w[n-1,])
     w_ <- exp(w[n-1,]-mx)/sum(exp(w[n-1,] - mx))
@@ -308,8 +314,7 @@ for(n in (L+1):Time){
     if(L == 1){
       for(i in 1:Num){
         X[n,i] <- rnorm(1, ((1-B*C^2/(C^2*B+D))*A*X[n-1,s[i]]+obs[n]*B*C/(C^2*B+D))/2, sqrt((1-B*C^2/(C^2*B+D))*B))
-        #rnorm(1, ((1-B*C^2/(C^2*B+D))*A*X[n-1,s[i]]+obs[n]*B*C/(C^2*B+D))/2, sqrt((1-B*C^2/(C^2*B+D))*B))
-      }  #pass
+      }  #pass                              
       w[n,] = log((2*pi*(B^2+D^2))^(-1/2)*exp((-1/2)*(A*X[n-1,s]-obs[n])^2/(B^2+D^2))) 
       ##pass
       
@@ -321,10 +326,16 @@ for(n in (L+1):Time){
       Z_apf <- output[[3]]
       
       psi_pa <- psi_APF(n, X_apf, Z_apf)
+      psi.before <- psi.now
+      psi.now <- psi_pa
       
       #set fg as the product of f*g, fg_ as the product of f*g[n-1]
-      fg <- rep(0,Num)
-      fg_ <- rep(0,Num)
+      f.psi <- rep(0,Num)
+      f.psi_ <- rep(0,Num)
+      f_ <- rep(0,Num)
+      f <- rep(0,Num)
+      g_ <- rep(0,Num)
+      g <- rep(0,Num)
       
       for(p in (n-L+1):n){
         for(i in 1:Num){
@@ -332,19 +343,29 @@ for(n in (L+1):Time){
         }
       }
       
-      fg <- fg + dnorm(X_[n,], (A*X_[n-1, s]+C*obs[n])/2, 1/(1+C^2), log = TRUE)  #use selected particles to 
-      #get particles, here whether selecting particles is still needed
+      f <- f + dnorm(X_[n,], A*X_[n-1,s], B, log = TRUE)
+      g <- g + dnorm(obs[n], C*X_[n,], D, log = TRUE)
+      f.psi <- f.psi + dnorm(X_[n,], (psi_pa[n,2]^2*A*X_[n-1,s] + psi_pa[n,1])/(psi_pa[n,2]^2+1), 
+                             sqrt(psi_pa[n,2]^2 / (psi_pa[n,2]^2+1)), log = TRUE)
       
-      for(p in (n-1):(n-L+1)){
+      for(p in (n-L+1):(n-1)){
         for(i in 1:Num){
-          fg_[i] <- fg_[i] + dnorm(X_[p,i], (A*X_[p-1,s[i]]+C*obs[n])/2, 1/(1+C^2), log = TRUE) #the same?
-          fg[i] <- fg[i] + dnorm(X_[p,i], (A*X_[p-1,s[i]]+C*obs[n])/2, 1/(1+C^2), log = TRUE)
+          #fg_ time to n-1
+          f[i] <- f[i] + dnorm(X_[p,i], A*X_[p-1,s[i]], B, log = TRUE)
+          f_[i] <- f_[i] + dnorm(X[p,i], A*X[p-1,s[i]], B, log = TRUE)
+          g[i] <- g[i] + dnorm(obs[p], C*X_[p,i], D, log = TRUE)
+          g_[i] <- g_[i] + dnorm(obs[p], C*X[p,i], D, log = TRUE)
+          f.psi_[i] <- f.psi_[i] + dnorm(X[p,i], (psi.before[p,2]^2*A*X[p-1,s[i]] + psi.before[p,1])/(psi.before[p,2]^2+1), 
+                                         sqrt(psi.before[p,2]^2 / (psi.before[p,2]^2+1)), log = TRUE)
+          f.psi[i] <- f.psi[i] + dnorm(X_[p,i], (psi_pa[p,2]^2*A*X_[p-1,s[i]] + psi_pa[p,1])/(psi_pa[p,2]^2+1), 
+                                       sqrt(psi_pa[p,2]^2 / (psi_pa[p,2]^2+1)), log = TRUE)
         }
       }
       
       for(i in 1:Num){
-        w[n,i] <- fg[i] + f_aux(X_[n-1,s[i]], psi_pa, n-1) - fg_[i] -  f_aux(X_[n,s[i]], psi_pa, n)
-      }
+        w[n,i] <- f[i] + g[i] - f_[i] - g_[i] + f.psi_[i] - f.psi[i]
+          #fg[i] - fg_[i] + f.psi_[i] - f.psi[i]
+      }  
       
       X <- X_
     }
@@ -362,40 +383,61 @@ for(n in (L+1):Time){
     }else{
       
       X_ <- X
-      output <- init_APF()
+      output <- init_APF()                                                                                                                                                                                                                                               
       X_apf <- output[[1]]
       w_apf <- output[[2]]
       Z_apf <- output[[3]]
       
       psi_pa <- psi_APF(n, X_apf, Z_apf)
+      psi.before <- psi.now
+      psi.now <- psi_pa
       
       #set fg as the product of f*g, fg_ as the product of f*g[n-1]
-      fg <- rep(0,Num)
-      fg_ <- rep(0,Num)
+      f.psi <- rep(0,Num)
+      f.psi_ <- rep(0,Num)
+      f_ <- rep(0,Num)
+      f <- rep(0,Num)
+      g_ <- rep(0,Num)
+      g <- rep(0,Num)
       
       #sample particles
       for(p in (n-L+1):n){
         for(i in 1:Num){
-          X_[p,i] <- f_aux(X_[p-1,i], psi_pa, p)  #-1 or +1??
+          X_[p,i] <- f_aux(X_[p-1,i], psi_pa, p)  
         }
       }
-      #calculate part of the weight
-      fg <- fg + dnorm(X_[n,], (A*X_[n-1,]+C*obs[n])/2, 1/(1+C^2), log = TRUE)
+      #fg time to n
+      f <- f + dnorm(X_[n,], A*X_[n-1,], B, log = TRUE)
+      g <- g + dnorm(obs[n], C*X_[n,], D, log = TRUE)
+      f.psi <- f.psi + dnorm(X_[n,], (psi_pa[n,2]^2*A*X_[n-1,] + psi_pa[n,1])/(psi_pa[n,2]^2+1), 
+                             sqrt(psi_pa[n,2]^2 / (psi_pa[n,2]^2+1)), log = TRUE)
       
-      for(p in (n-1):(n-L+1)){
+      for(p in (n-L+1):(n-1)){
         for(i in 1:Num){
-          fg_[i] <- fg_[i] + dnorm(X_[p,i], (A*X_[p-1,i]+C*obs[n])/2, 1/(1+C^2), log = TRUE) #-1 or +1??
-          fg[i] <- fg[i] + dnorm(X_[p,i], (A*X_[p-1,i]+C*obs[n])/2, 1/(1+C^2), log = TRUE)
+          #fg_ time to n-1
+          f[i] <- f[i] + dnorm(X_[p,i], A*X_[p-1,i], B, log = TRUE)
+          f_[i] <- f_[i] + dnorm(X[p,i], A*X[p-1,i], B, log = TRUE)
+          g[i] <- g[i] + dnorm(obs[p], C*X_[p,i], D, log = TRUE)
+          g_[i] <- g_[i] + dnorm(obs[p], C*X[p,i], D, log = TRUE)
+          f.psi_[i] <- f.psi_[i] + dnorm(X[p,i], (psi.before[p,2]^2*A*X[p-1,i] + psi.before[p,1])/(psi.before[p,2]^2+1), 
+                                     sqrt(psi.before[p,2]^2 / (psi.before[p,2]^2+1)), log = TRUE)
+          f.psi[i] <- f.psi[i] + dnorm(X_[p,i], (psi_pa[p,2]^2*A*X_[p-1,i] + psi_pa[p,1])/(psi_pa[p,2]^2+1), 
+                                 sqrt(psi_pa[p,2]^2 / (psi_pa[p,2]^2+1)), log = TRUE)
+          
         }
       }
       
       for(i in 1:Num){
-        w[n,i] <- w[n-1,i] + fg[i] + f_aux(X_[n-1,i], psi_pa, n-1) - fg_[i] -  f_aux(X_[n,i], psi_pa, n)
-      }
+        w[n,i] <- w[n-1,i] + f[i] + g[i] - f_[i] - g_[i] + f.psi_[i] - f.psi[i]
+          #w[n-1,i] + fg[i] - fg_[i] + f.psi_[i] - f.psi[i]
+          
+      }  
       
       X <- X_
     }
   }
 }
+print(paste0('re=',re))
 mx <- max(w[Time,])
 Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
+exp(Z-fkf.obj)

@@ -174,7 +174,7 @@ Psi <- function(l, n, X_apf, N){
     #2. calculate psi_t
     #calculate min
     fn <- function(x, X_apf, psi){
-      lambda <-  
+      lambda <- 2*sum(dnorm(X_apf[t,1:N[l]],mean=x[1],sd=x[2]) * psi[t,1:N[l]]) / sum(psi[t,]^2)
         return(sum((psi[t,] - (1/lambda)*dnorm(X_apf[t,1:N[l]],mean=x[1],sd=x[2]))^2))
     }
     
@@ -192,34 +192,40 @@ Psi <- function(l, n, X_apf, N){
     print(obs[t])
     
     #algorithm 2: find phi
-    if(t == n){
-      epsilon[t,] <- g_aux(obs[t], X_apf[t,], t, psi_pa, n) 
+    if(n != L){
+      if(t == n){
+        epsilon[t,] <- g_aux(obs[t], X_apf[t,], t, psi_pa, n) 
+        
+        
+      }else{
+        #phi[1]: a; phi[2]: b; phi[3]: c
+        #psi_pa[t,1]: mu, psi_pa[t,2]: var
+        epsilon[t,] <- g_aux(obs[t], X_apf[t,], t, psi_pa, n)*psi_phi(X_apf[t+1,], psi_pa, t+1, phi)
+      }
       
+      gn <- function(x, X_apf, psi){
+        V <- sum((x[1]*X_apf[t,]^2 + x[2]*X_apf[t,] + x[3] + log(epsilon[t,]))^2)
+        return(V)
+      }
       
-    }else{
-      #phi[1]: a; phi[2]: b; phi[3]: c
-      #psi_pa[t,1]: mu, psi_pa[t,2]: var
-      epsilon[t,] <- g_aux(obs[t], X_apf[t,], t, psi_pa, n)*psi_phi(X_apf[t+1,], psi_pa, t+1, phi)
+      #parameters of phi_t, can get distribution of phi_t
+      if(t == n){
+        phi[t,] <- optim(par = c(1,1,1),
+                         fn = gn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf, -Inf, -Inf),upper=c(Inf, Inf, Inf))$par
+      }else{
+        phi[t,] <- optim(par = c(X_apf[t,which.max(psi[t,])],1), 
+                         fn = gn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf, -Inf, -Inf),upper=c(Inf, Inf, Inf))$par
+      }
+      
+      #psi = psi*phi
+      psi_new[t,1] <- (psi_pa[t,1] - phi[t,2]*psi_pa[t,2])/(1 + 2*phi[t,1]*psi_pa[t,2])
+      psi_new[t,2] <- psi_pa[t,2]/(1 + 2*phi[t,1]*psi_pa[t,2])
     }
-    
-    gn <- function(x, X_apf, psi){
-      V <- sum((x[1]*X_apf[t,]^2 + x[2]*X_apf[t,] + x[3] + log(epsilon[t,]))^2)
-      return(V)
-    }
-    
-    #parameters of phi_t, can get distribution of phi_t
-    if(t == n){
-      phi[t,] <- optim(par = c(1,1,1),
-                       fn = gn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf, -Inf, -Inf),upper=c(Inf, Inf, Inf))$par
-    }else{
-      phi[t,] <- optim(par = c(X_apf[t,which.max(psi[t,])],1), 
-                       fn = gn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf, -Inf, -Inf),upper=c(Inf, Inf, Inf))$par
-    }
-    
-    #psi = psi*phi
-    psi_new[t,1] <- (psi_pa[t,1] - phi[t,2]*psi_pa[t,2])/(1 + 2*phi[t,1]*psi_pa[t,2])
-    psi_new[t,2] <- psi_pa[t,2]/(1 + 2*phi[t,1]*psi_pa[t,2])
-  }  
+  }
+  
+  if(n == L){
+    psi_new = psi_pa
+  }
   
   return(psi_new)
 }
@@ -324,7 +330,6 @@ Init <- function(){
     Z_apf <- output[[3]]
     
     psi_pa <- psi_APF(n, X_apf, Z_apf)
-    psi.before <- psi.now
     psi.now <- psi_pa
     
     w[L,] <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L]))$logLik  #pass

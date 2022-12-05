@@ -170,11 +170,11 @@ Psi <- function(l, n, X_apf, N){
     #get the distribution of psi_t
     if(t == n){
       psi_pa[t,] <- optim(par = c(mean(X_apf[t,1:N[l]]),1),
-                          fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf,0),upper=c(Inf,Inf))$par
+                          fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf,0.1),upper=c(Inf,Inf))$par
     }else{
       
       psi_pa[t,] <- optim(par = c(X_apf[t,which.max(psi[t,1:N[l]])],1), 
-                          fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf,0),upper=c(Inf,Inf))$par
+                          fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf,0.1),upper=c(Inf,Inf))$par
     }
     
     print(psi_pa[t, 1])

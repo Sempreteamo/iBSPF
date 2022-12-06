@@ -1,10 +1,10 @@
 library(FKF)
 set.seed(456)
-Num <- 100
+Num <- 50
 N <- vector()
 N[1] <- Num
-Time = 200
-L = 190
+Time = 100
+L = 95
 A = 0.42
 B = 1
 C = 1
@@ -101,7 +101,7 @@ psi_t <- function(x, psi_pa, t, n){ #from 1 to T+1. 1, T+1 = 1
 
 psi_phi <- function(x, psi_pa, t, phi){
   return((2*pi*(B + psi_pa[t,2]/(1 + 2*phi[t,1]*psi_pa[t,2])))^(-1/2)*
-           exp(-(A*x - (psi_pa[t,1] - phi[t,2]*psi_pa[t,2])/(1 + 2*phi[t,1]*psi_pa[t,2]))^2/
+           exp(-(A*x - (phi[t,2]*psi_pa[t,2] - psi_pa[t,1])/(1 + 2*phi[t,1]*psi_pa[t,2]))^2/
                  (2*B + 2*psi_pa[t,2]/(1 + 2*phi[t,1]*psi_pa[t,2]))))
 }
 
@@ -178,9 +178,9 @@ Psi <- function(l, n, X_apf, N, psi_pa){
       }
     }
     
-    data <- cbind(rep(1, N[l]), X_apf[t,], X_apf[t,]^2)
+    data <- cbind(X_apf[t,]^2, X_apf[t,], rep(1, N[l]))
     
-    phi[t,] <- -t(solve(t(data)%*%data)%*%t(data)%*%log(epsilon[t,]))[3:2]
+    phi[t,] <- -t(solve(t(data)%*%data)%*%t(data)%*%log(epsilon[t,]))[1:2]
     
     if(l == 1){
       psi_new[t,] <- c(-phi[t,2]/(2*phi[t,1]), sqrt(1/(2*phi[t,1]))) #>0?

@@ -1,10 +1,10 @@
 library(FKF)
-set.seed(456)
-Num <- 50
+set.seed(4561)
+Num <- 100
 N <- vector()
 N[1] <- Num
-Time = 100
-L = 95
+Time = 101
+L = 20
 A = 0.42
 B = 1
 C = 1
@@ -334,6 +334,7 @@ for(n in (L+1):Time){
       ##pass
       
     }else{
+    X <- X[,s]
       X_ <- X
       output <- init_APF()
       X_apf <- output[[1]]
@@ -355,25 +356,25 @@ for(n in (L+1):Time){
       
       for(p in (n-L+1):n){
         for(i in 1:Num){
-          X_[p,i] <- f_aux(X_[p-1, s[i]], psi_pa, p)  #-1 or +1??
+          X_[p,i] <- f_aux(X_[p-1, i], psi_pa, p)  #-1 or +1??
         }
       }
       
-      f <- f + dnorm(X_[n,], A*X_[n-1,s], B, log = TRUE)
+      f <- f + dnorm(X_[n,], A*X_[n-1,], B, log = TRUE)
       G <- G + dnorm(obs[n], C*X_[n,], D, log = TRUE)
-      f.psi <- f.psi + dnorm(X_[n,], (psi_pa[n,2]^2*A*X_[n-1,s] + psi_pa[n,1])/(psi_pa[n,2]^2+1), 
+      f.psi <- f.psi + dnorm(X_[n,], (psi_pa[n,2]^2*A*X_[n-1,] + psi_pa[n,1])/(psi_pa[n,2]^2+1), 
                              sqrt(psi_pa[n,2]^2 / (psi_pa[n,2]^2+1)), log = TRUE)
       
       for(p in (n-L+1):(n-1)){
         for(i in 1:Num){
           #fg_ time to n-1
-          f[i] <- f[i] + dnorm(X_[p,i], A*X_[p-1,s[i]], B, log = TRUE)
-          f_[i] <- f_[i] + dnorm(X[p,i], A*X[p-1,s[i]], B, log = TRUE)
+          f[i] <- f[i] + dnorm(X_[p,i], A*X_[p-1,i], B, log = TRUE)
+          f_[i] <- f_[i] + dnorm(X[p,i], A*X[p-1,i], B, log = TRUE)
           G[i] <- G[i] + dnorm(obs[p], C*X_[p,i], D, log = TRUE)
           g_[i] <- g_[i] + dnorm(obs[p], C*X[p,i], D, log = TRUE)
-          f.psi_[i] <- f.psi_[i] + dnorm(X[p,i], (psi.before[p,2]^2*A*X[p-1,s[i]] + psi.before[p,1])/(psi.before[p,2]^2+1), 
+          f.psi_[i] <- f.psi_[i] + dnorm(X[p,i], (psi.before[p,2]^2*A*X[p-1,i] + psi.before[p,1])/(psi.before[p,2]^2+1), 
                                          sqrt(psi.before[p,2]^2 / (psi.before[p,2]^2+1)), log = TRUE)
-          f.psi[i] <- f.psi[i] + dnorm(X_[p,i], (psi_pa[p,2]^2*A*X_[p-1,s[i]] + psi_pa[p,1])/(psi_pa[p,2]^2+1), 
+          f.psi[i] <- f.psi[i] + dnorm(X_[p,i], (psi_pa[p,2]^2*A*X_[p-1,i] + psi_pa[p,1])/(psi_pa[p,2]^2+1), 
                                        sqrt(psi_pa[p,2]^2 / (psi_pa[p,2]^2+1)), log = TRUE)
         }
       }
@@ -453,4 +454,4 @@ for(n in (L+1):Time){
 print(paste0('re=',re))
 mx <- max(w[Time,])
 Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
-exp(Z-fkf.obj)
+print(exp(Z-fkf.obj))

@@ -1,15 +1,16 @@
 library(FKF)
 set.seed(4561)
-Num <- 100
+Num <- 50
 N <- vector()
 N[1] <- Num
-Time = 101
-L = 20
+Time = 50
+L = 10
 A = 0.42
 B = 1
 C = 1
 D = 1
 d = 1
+
 k <- 5
 tau <- 0.5
 X <- matrix(NA, Time, Num)
@@ -100,9 +101,9 @@ psi_t <- function(x, psi_pa, t, n){ #from 1 to T+1. 1, T+1 = 1
 }
 
 psi_phi <- function(x, psi_pa, t, phi){
-  return((2*pi*(B + psi_pa[t,2]/(1 + 2*phi[t,1]*psi_pa[t,2])))^(-1/2)*
-           exp(-(A*x - (phi[t,2]*psi_pa[t,2] - psi_pa[t,1])/(1 + 2*phi[t,1]*psi_pa[t,2]))^2/
-                 (2*B + 2*psi_pa[t,2]/(1 + 2*phi[t,1]*psi_pa[t,2]))))
+  return((2*pi*(B + psi_pa[t,2]^2/(1 + 2*phi[t,1]*psi_pa[t,2]^2)))^(-1/2)*
+           exp(-(A*x - (phi[t,2]*psi_pa[t,2]^2 - psi_pa[t,1])/(1 + 2*phi[t,1]*psi_pa[t,2]^2))^2/
+                 (2*B + 2*psi_pa[t,2]^2/(1 + 2*phi[t,1]*psi_pa[t,2]^2))))
 }
 
 ####APF####
@@ -165,7 +166,8 @@ Psi <- function(l, n, X_apf, N, psi_pa){
       }else{
         #phi[1]: a; phi[2]: b; phi[3]: c
         #psi_pa[t,1]: mu, psi_pa[t,2]: var
-        epsilon[t,] <- g(obs[t], X_apf[t,])*dnorm(A*X_apf[t+1,], psi_new[t+1, 1], sqrt(psi_new[t+1,2]^2+B^2))
+        epsilon[t,] <- g(obs[t], X_apf[t,])*(2*pi*(B + psi_new[t+1,2]^2))^(-1/2)*
+          exp(-(A*X_apf[t+1,] - psi_new[t+1,1])^2/(2*(B + psi_new[t+1,2]^2)))  #t???
       }
     }else{
       if(t == n){
@@ -189,8 +191,8 @@ Psi <- function(l, n, X_apf, N, psi_pa){
       print(obs[t])
     }else{
       #psi = psi*phi
-      psi_new[t,1] <- (psi_pa[t,1] - phi[t,2]*psi_pa[t,2])/(1 + 2*phi[t,1]*psi_pa[t,2])
-      psi_new[t,2] <- sqrt(psi_pa[t,2]/(1 + 2*phi[t,1]*psi_pa[t,2]))
+      psi_new[t,1] <- (psi_pa[t,1] - phi[t,2]*psi_pa[t,2]^2)/(1 + 2*phi[t,1]*psi_pa[t,2]^2)
+      psi_new[t,2] <- sqrt(psi_pa[t,2]^2/(1 + 2*phi[t,1]*psi_pa[t,2]^2))
       
       print(psi_new[t, 1])
       print(obs[t])
@@ -300,9 +302,9 @@ Init <- function(){
     w_apf <- output[[2]]
     Z_apf <- output[[3]]
     
-    psi_pa <- psi_APF(n, X_apf, Z_apf)
+    psi_new <- psi_APF(n, X_apf, Z_apf)
     psi.before <- psi.now
-    psi.now <- psi_pa
+    psi.now <- psi_new
     
     w[L,] <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L]))$logLik  #pass
     
@@ -334,14 +336,14 @@ for(n in (L+1):Time){
       ##pass
       
     }else{
-    X <- X[,s]
+      X <- X[,s]
       X_ <- X
       output <- init_APF()
       X_apf <- output[[1]]
       w_apf <- output[[2]]
       Z_apf <- output[[3]]
       
-      psi_pa <- psi_APF(n, X_apf, Z_apf)
+      psi_new <- psi_APF(n, X_apf, Z_apf)
       psi.before <- psi.now
       psi.now <- psi_pa
       

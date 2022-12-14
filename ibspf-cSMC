@@ -3,14 +3,13 @@ set.seed(4561)
 Num <- 50
 N <- vector()
 N[1] <- Num
-Time = 50
-L = 10
+Time = 51
+L = 30
 A = 0.42
 B = 1
 C = 1
 D = 1
 d = 1
-
 k <- 5
 tau <- 0.5
 X <- matrix(NA, Time, Num)
@@ -58,11 +57,12 @@ g <- function(y, x){
   #dnorm(X[t,1:N],obs[t])
 }
 
-mu_aux <- function(psi_pa, l, N, t){
+mu_aux <- function(psi_pa, l, N, t){ #?
   return(rnorm(N[l], mean =  psi_pa[t,1]/(1+psi_pa[t,2]), sd = psi_pa[t,2]/(1+psi_pa[t,2])))
+  #(rnorm(N[l], mean =  (psi_pa[t,1]+psi_pa[t,2]^2)/(1+psi_pa[t,2]^2), sd = psi_pa[t,2]^2/(1+psi_pa[t,2]^2)))
 }
 
-g_aux <- function(y, x, t, psi_pa, n){  #?
+g_aux <- function(y, x, t, psi_pa, n){  
   if(t == (n-L+1)){
     return(dnorm(x, y)*psi_tilda(x, psi_pa, t, n)*(2*pi*(psi_pa[t, d+1]^2+1))^
              (-1/2)*exp((-1/2)*(-psi_pa[t, 1])^2/(psi_pa[t,  d+1]^2+1))/psi_t(x, psi_pa, t, n))  #initialisation of g = t=1 or t=L?
@@ -166,8 +166,7 @@ Psi <- function(l, n, X_apf, N, psi_pa){
       }else{
         #phi[1]: a; phi[2]: b; phi[3]: c
         #psi_pa[t,1]: mu, psi_pa[t,2]: var
-        epsilon[t,] <- g(obs[t], X_apf[t,])*(2*pi*(B + psi_new[t+1,2]^2))^(-1/2)*
-          exp(-(A*X_apf[t+1,] - psi_new[t+1,1])^2/(2*(B + psi_new[t+1,2]^2)))  #t???
+        epsilon[t,] <- g(obs[t], X_apf[t,])*dnorm(A*X_apf[t+1,], psi_new[t+1, 1], sqrt(psi_new[t+1,2]^2+B^2))
       }
     }else{
       if(t == n){
@@ -302,9 +301,9 @@ Init <- function(){
     w_apf <- output[[2]]
     Z_apf <- output[[3]]
     
-    psi_new <- psi_APF(n, X_apf, Z_apf)
+    psi_pa <- psi_APF(n, X_apf, Z_apf)
     psi.before <- psi.now
-    psi.now <- psi_new
+    psi.now <- psi_pa
     
     w[L,] <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L]))$logLik  #pass
     
@@ -343,7 +342,7 @@ for(n in (L+1):Time){
       w_apf <- output[[2]]
       Z_apf <- output[[3]]
       
-      psi_new <- psi_APF(n, X_apf, Z_apf)
+      psi_pa <- psi_APF(n, X_apf, Z_apf)
       psi.before <- psi.now
       psi.now <- psi_pa
       

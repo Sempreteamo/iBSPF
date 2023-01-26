@@ -1,10 +1,13 @@
+seed.label<-as.numeric(Sys.getenv("SGE_TASK_ID"))
+set.seed(123)
 library(FKF)
-set.seed(456)
-Num <- 50
+final <- vector()
+Num <- 1000
 N <- vector()
 N[1] <- Num
-Time = 10
-L = 10
+Time = 100
+L_candidate=c(1,2,3,5,7,9)
+L=L_candidate[(seed.label-1)%/%5+1]
 A = 0.42
 B = 1
 C = 1
@@ -12,19 +15,31 @@ D = 1
 d = 1
 k <- 5
 tau <- 0.5
-X <- matrix(NA, Time, Num)
-X_ <- matrix(NA, Time, Num)
-w <- matrix(NA, Time, Num)
 X_true <- vector()
 obs <- vector()
 kappa = 0.5
-Z = 0
-Z_apf <- vector()
-
 dt <- ct <- 0
 Tt <- as.matrix(A)
 P0 <- Zt <- Ht <- Gt <- as.matrix(1)
 a0 <- 0
+index <- 1
+
+Obs <- function(){
+  X_true[1] <- rnorm(1)   
+  for(t in 2:Time){  #observations
+    X_true[t] <- rnorm(1) + A*X_true[t-1] 
+  }
+  return(rnorm(Time) + X_true)
+}
+obs <- Obs()
+
+for(qq in (10*((seed.label-1)%%5+1)-9):(10*((seed.label-1)%%5+1))){
+  set.seed(qq)
+X <- matrix(NA, Time, Num)
+X_ <- matrix(NA, Time, Num)
+w <- matrix(NA, Time, Num)
+Z = 0
+Z_apf <- vector()
 
 ESS <- function(t,w, is.log=FALSE){
   if(is.log) {
@@ -38,14 +53,6 @@ ESS <- function(t,w, is.log=FALSE){
   return(ess)  
 }
 
-Obs <- function(){
-  X_true[1] <- rnorm(1)   
-  for(t in 2:Time){  #observations
-    X_true[t] <- rnorm(1) + A*X_true[t-1] 
-  }
-  return(rnorm(Time) + X_true)
-}
-obs <- Obs()
 fkf.obj <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs))$logLik
 
 f <- function(x){
@@ -58,13 +65,13 @@ g <- function(y, x){
 }
 
 mu_aux <- function(psi_pa, l, N, t){
-  return(rnorm(N[l], mean =  psi_pa[t,1]/(1+psi_pa[t,2]), sd = psi_pa[t,2]/(1+psi_pa[t,2])))
+  return(rnorm(N[l], mean =  psi_pa[t,1]/(1+psi_pa[t,2]^2), sd = psi_pa[t,2]^2/(1+psi_pa[t,2]^2)))
 }
 
 g_aux <- function(y, x, t, psi_pa, n){  
   if(t == (n-L+1)){
-    return(dnorm(x, y)*psi_tilda(x, psi_pa, t, n)*(2*pi*(psi_pa[t, d+1]^2+1))^
-             (-1/2)*exp((-1/2)*(-psi_pa[t, 1])^2/(psi_pa[t,  d+1]^2+1))/psi_t(x, psi_pa, t, n))  #initialisation of g = t=1 or t=L?
+    return(dnorm(x, y)*psi_tilda(x, psi_pa, t, n)*(2*pi*(psi_pa[t, 2]^2+1))^
+             (-1/2)*exp((-1/2)*(-psi_pa[t, 1])^2/(psi_pa[t, 2]^2+1))/psi_t(x, psi_pa, t, n))  #initialisation of g = t=1 or t=L?
   }else{
     return(dnorm(x, y)*psi_tilda(x, psi_pa, t, n)/psi_t(x, psi_pa, t, n))  #g_2:T 
   }
@@ -80,12 +87,12 @@ Num_apf <- function(Z, l, k){
   return(sd(exp(Z[max(l-k,1):l]-max(Z[max(l-k,1):l])))/mean(exp(Z[max(l-k,1):l]-max(Z[max(l-k,1):l]))))
 }
 
-psi_tilda <- function(x, psi_pa, t, n){  #from 0 to T. 0,T = 1  ?????
+psi_tilda <- function(x, psi_pa, t, n){  #from 0 to T. 0,T = 1 
   if(t == n){
     psi_tilda <- 1
   }else{   #psi_pa_t = psi_t
-    psi_tilda <- (2*pi*(psi_pa[t+1, d+1]^2+1))^   #dnorm(A*x, psi_pa[t+1, 1], sqrt(psi_pa[t+1,2]^2+sigma^2)))
-      (-1/2)*exp((-1/2)*(A*x-psi_pa[t+1, 1])^2/(psi_pa[t+1, d+1]^2+1))  #f(xt, ÃÂt+1 )   #var should be psi^2+1?
+    psi_tilda <- (2*pi*(psi_pa[t+1, 2]^2+1))^   #dnorm(A*x, psi_pa[t+1, 1], sqrt(psi_pa[t+1,2]^2+sigma^2)))
+      (-1/2)*exp((-1/2)*(A*x-psi_pa[t+1, 1])^2/(psi_pa[t+1, 2]^2+1))  #f(xt, ÃÂt+1 )   #var should be psi^2+1?
   }
   return(psi_tilda)
 }
@@ -94,7 +101,7 @@ psi_t <- function(x, psi_pa, t, n){ #from 1 to T+1. 1, T+1 = 1
   if(t == (n + 1)){
     psi_t <- 1
   }else{
-    psi_t <- (2*pi*psi_pa[t, d+1]^2)^(-1/2)*exp((-1/2)*(x-psi_pa[t, 1])^2/(psi_pa[t, d+1]^2))  
+    psi_t <- (2*pi*psi_pa[t, 2]^2)^(-1/2)*exp((-1/2)*(x-psi_pa[t, 1])^2/(psi_pa[t, 2]^2))  
   }
   return(psi_t)
 }
@@ -146,12 +153,14 @@ APF <- function(psi_pa, l, Z_apf, N){
 }
 
 ####Psi####
+
 Psi <- function(l, n, X_apf, N){
   psi <- matrix(NA, nrow = Time, ncol = N[l])
   psi_pa <- matrix(NA, nrow = Time, ncol = 2)
-  for(t in n:(n-L+1)){  
+  #calculate psi
+  for(t in n:(n-L+1)){
     
-    print(t)
+    #print(t)
     
     if(t == n){
       psi[t,] <- dnorm(X_apf[t,1:N[l]], obs[t])   
@@ -177,9 +186,11 @@ Psi <- function(l, n, X_apf, N){
                           fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf,0.1),upper=c(Inf,Inf))$par
     }
     
-    print(psi_pa[t, 1])
-    print(obs[t])
+    #print(psi_pa[t, 1])
+    #print(obs[t])
   }
+  
+  
   
   return(psi_pa)
 }
@@ -254,7 +265,6 @@ psi_APF <- function(n, X_apf, Z_apf){
   return(psi_pa)
 }
 
-
 ####init-BSPF####
 psi.before <- matrix()
 psi.now <- matrix()
@@ -302,7 +312,7 @@ psi.now <- output[[3]]
 re = 0
 
 for(n in (L+1):Time){
-  print(n)
+  #print(n)
   if(ESS(n,w, is.log = TRUE) <= kappa*N){
     re = re + 1
     mx <- max(w[n-1,])
@@ -317,6 +327,7 @@ for(n in (L+1):Time){
       ##pass
       
     }else{
+      X <- X[,s]
       X_ <- X
       output <- init_APF()
       X_apf <- output[[1]]
@@ -327,7 +338,6 @@ for(n in (L+1):Time){
       psi.before <- psi.now
       psi.now <- psi_pa
       
-      #set fg as the product of f*g, fg_ as the product of f*g[n-1]
       f.psi <- rep(0,Num)
       f.psi_ <- rep(0,Num)
       f_ <- rep(0,Num)
@@ -337,25 +347,25 @@ for(n in (L+1):Time){
       
       for(p in (n-L+1):n){
         for(i in 1:Num){
-          X_[p,i] <- f_aux(X_[p-1, s[i]], psi_pa, p)  #-1 or +1??
+          X_[p,i] <- f_aux(X_[p-1, i], psi_pa, p)  #-1 or +1??
         }
       }
       
-      f <- f + dnorm(X_[n,], A*X_[n-1,s], B, log = TRUE)
+      f <- f + dnorm(X_[n,], A*X_[n-1,], B, log = TRUE)
       g <- g + dnorm(obs[n], C*X_[n,], D, log = TRUE)
-      f.psi <- f.psi + dnorm(X_[n,], (psi_pa[n,2]^2*A*X_[n-1,s] + psi_pa[n,1])/(psi_pa[n,2]^2+1), 
+      f.psi <- f.psi + dnorm(X_[n,], (psi_pa[n,2]^2*A*X_[n-1,] + psi_pa[n,1])/(psi_pa[n,2]^2+1), 
                              sqrt(psi_pa[n,2]^2 / (psi_pa[n,2]^2+1)), log = TRUE)
       
       for(p in (n-L+1):(n-1)){
         for(i in 1:Num){
           #fg_ time to n-1
-          f[i] <- f[i] + dnorm(X_[p,i], A*X_[p-1,s[i]], B, log = TRUE)
-          f_[i] <- f_[i] + dnorm(X[p,i], A*X[p-1,s[i]], B, log = TRUE)
+          f[i] <- f[i] + dnorm(X_[p,i], A*X_[p-1,i], B, log = TRUE)
+          f_[i] <- f_[i] + dnorm(X[p,i], A*X[p-1,i], B, log = TRUE)
           g[i] <- g[i] + dnorm(obs[p], C*X_[p,i], D, log = TRUE)
           g_[i] <- g_[i] + dnorm(obs[p], C*X[p,i], D, log = TRUE)
-          f.psi_[i] <- f.psi_[i] + dnorm(X[p,i], (psi.before[p,2]^2*A*X[p-1,s[i]] + psi.before[p,1])/(psi.before[p,2]^2+1), 
+          f.psi_[i] <- f.psi_[i] + dnorm(X[p,i], (psi.before[p,2]^2*A*X[p-1,i] + psi.before[p,1])/(psi.before[p,2]^2+1), 
                                          sqrt(psi.before[p,2]^2 / (psi.before[p,2]^2+1)), log = TRUE)
-          f.psi[i] <- f.psi[i] + dnorm(X_[p,i], (psi_pa[p,2]^2*A*X_[p-1,s[i]] + psi_pa[p,1])/(psi_pa[p,2]^2+1), 
+          f.psi[i] <- f.psi[i] + dnorm(X_[p,i], (psi_pa[p,2]^2*A*X_[p-1,i] + psi_pa[p,1])/(psi_pa[p,2]^2+1), 
                                        sqrt(psi_pa[p,2]^2 / (psi_pa[p,2]^2+1)), log = TRUE)
         }
       }
@@ -432,7 +442,13 @@ for(n in (L+1):Time){
     }
   }
 }
-print(paste0('re=',re))
+#print(paste0('re=',re))
 mx <- max(w[Time,])
 Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
-exp(Z-fkf.obj)
+print(exp(Z-fkf.obj))
+final[index] <- exp(Z-fkf.obj)
+index = index + 1
+}
+filename=paste0('L=',L,'_',(seed.label-1)%%5+1,'.csv') 
+write.table(final,file=filename)
+

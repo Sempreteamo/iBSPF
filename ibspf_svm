@@ -3,13 +3,13 @@ set.seed(123)
 #library(FKF)
 X_true <- vector()
 final <- vector()
-Num <- 100
+Num <- 1000
 N <- vector()
 N[1] <- Num
 Time = 10
 #L_candidate=c(2,4,5,7,9)
 #L=L_candidate[(seed.label-1)%/%5+1]#1...5: first L
-L=5
+L=2
 standard_d = 0.145
 alpha <- 0.984
 beta <- 0.69
@@ -171,11 +171,11 @@ Psi <- function(l, n, X_apf, N){
     #get the distribution of psi_t
     if(t == n){
       psi_pa[t,] <- optim(par = c(0,1),
-                          fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-20,0.8),upper=c(Inf,Inf))$par
+                          fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf,0.5),upper=c(Inf,Inf))$par
     }else{
       
       psi_pa[t,] <- optim(par = c(0,1), 
-                         fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-20,0.8),upper=c(Inf,Inf))$par
+                         fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf,0.5),upper=c(Inf,Inf))$par
       
     }
     #method='L-BFGS-B',lower=c(-Inf,0.1),upper=c(Inf,Inf)
@@ -194,7 +194,7 @@ init_APF <- function(){
   X_init <- matrix(NA, Time, N[l])
   w_init <- matrix(NA, Time, N[l]) 
   
-  X_init[n-L+1,] <- rnorm(N[l], mean = 0, sd = B/sqrt(1 - A^2))  #mu
+  X_init[n-L+1,] <- rnorm(N[l], mean = 0, sd = B/(1 - A))  #mu
   w_init[n-L+1,] <- dnorm(obs[n-L+1], mean = 0, sd = beta*sqrt(exp(X_init[n-L+1,])), log = TRUE)  #g(particle) 
   
   for(t in (n-L+2):n){
@@ -436,7 +436,7 @@ for(n in (L+1):Time){
       }
       #fg time to n
       f <- f + dnorm(X_[n,], A*X_[n-1,], B, log = TRUE)
-      g <- g + dnorm(obs[n], 0, beta^2*sqrt(exp(X_[n,])), log = TRUE)
+      g <- g + dnorm(obs[n], 0, beta*sqrt(exp(X_[n,])), log = TRUE)
       f.psi <- f.psi + dnorm(X_[n,], (psi_pa[n,2]^2*A*X_[n-1,] + B^2*psi_pa[n,1])/(psi_pa[n,2]^2+B^2), 
                              sqrt(psi_pa[n,2]^2*B^2 / (psi_pa[n,2]^2+B^2)), log = TRUE)
       
@@ -445,8 +445,8 @@ for(n in (L+1):Time){
           #fg_ time to n-1
           f[i] <- f[i] + dnorm(X_[p,i], A*X_[p-1,i], B, log = TRUE)
           f_[i] <- f_[i] + dnorm(X[p,i], A*X[p-1,i], B, log = TRUE)
-          g[i] <- g[i] + dnorm(obs[p], 0, beta^2*sqrt(exp(X_[p,i])), log = TRUE)
-          g_[i] <- g_[i] + dnorm(obs[p], 0, beta^2*sqrt(exp(X[p,i])), log = TRUE)
+          g[i] <- g[i] + dnorm(obs[p], 0, beta*sqrt(exp(X_[p,i])), log = TRUE)
+          g_[i] <- g_[i] + dnorm(obs[p], 0, beta*sqrt(exp(X[p,i])), log = TRUE)
           f.psi_[i] <- f.psi_[i] + dnorm(X[p,i], (psi.before[p,2]^2*A*X[p-1,i] + B^2*psi.before[p,1])/(psi.before[p,2]^2+B^2), 
                                          sqrt(psi.before[p,2]^2*B^2 / (psi.before[p,2]^2+B^2)), log = TRUE)
           f.psi[i] <- f.psi[i] + dnorm(X_[p,i], (psi_pa[p,2]^2*A*X_[p-1,i] + B^2*psi_pa[p,1])/(psi_pa[p,2]^2+B^2), 

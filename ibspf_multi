@@ -3,18 +3,18 @@ set.seed(123)
 library(mvtnorm)
 library(MASS)
 library(FKF)
-library(profvis)
+#library(profvis)
 
   final <- vector()
   Num <- 100
   N <- vector()
   N[1] <- Num
-  Time = 10
-  #L_candidate=c(2,4,6,8,9)
+  Time = 100
+  #L_candidate=c(2,3,4,5,6,7,8,9)
   #L=L_candidate[(seed.label-1)%/%50+1]
-  L=9
+  L=2
   alpha = 0.42
-  d = 8
+  d = 9
   k <- 5
   tau <- 0.5
   kappa = 0.5
@@ -46,7 +46,7 @@ library(profvis)
   obs <- Obs()
   
   # ((seed.label-1)%%50+1):((seed.label-1)%%50+1)
-  for(qq in 2){
+  #for(qq in 5:5){
     set.seed(qq)
     
     X <- array(NA, dim = c(Time, Num, d))
@@ -86,7 +86,7 @@ library(profvis)
     
     g_aux <- function(y, x, t, psi_pa, n){  
       if(t == (n-L+1)){
-        return(g(y, x)*psi_tilda(x, psi_pa, t, n)*(det(2*pi*diag((psi_pa[t, (d+1):(d+d)]+1), nrow=d,ncol=d))^
+        return(g(y, x)*psi_tilda(x, psi_pa, t, n)*((2*pi)^(-d/2)*det(diag(psi_pa[t, (d+1):(d+d)]+1, nrow=d,ncol=d))^
                                                      (-1/2)*exp((-1/2)*t(-psi_pa[t, 1:d])%*%
                                                                   diag((psi_pa[t, (d+1):(d+d)]+1)^(-1), nrow=d,ncol=d)%*%
                                                                   (-psi_pa[t, 1:d])))/psi_t(x, psi_pa, t, n))  #initialisation of g = t=1 or t=L?
@@ -110,7 +110,7 @@ library(profvis)
       if(t == n){
         psi_tilda <- 1
       }else{   #psi_pa_t = psi_t
-        psi_tilda <- det(2*pi*diag(psi_pa[t+1, (d+1):(d+d)]+1, nrow=d, ncol=d))^(-1/2)*
+        psi_tilda <- (2*pi)^(-d/2)*det(diag(psi_pa[t+1, (d+1):(d+d)]+1, nrow=d, ncol=d))^(-1/2)*
           exp((-1/2)*t(as.vector(A%*%x) - psi_pa[t+1, 1:d])%*%diag((psi_pa[t+1, (d+1):(d+d)]+1)^(-1), nrow=d,ncol=d)%*%
                 (as.vector(A%*%x)-psi_pa[t+1, 1:d])) #f(xt, ÃÂt+1 )   #var should be psi^2+1?
       }
@@ -121,7 +121,7 @@ library(profvis)
       if(t == (n + 1)){
         psi_t <- 1
       }else{
-        psi_t <- det(2*pi*diag(psi_pa[t, (d+1):(d+d)], nrow=d,ncol=d))^(-1/2)*						
+        psi_t <- (2*pi)^(-d/2)*det(diag(psi_pa[t, (d+1):(d+d)], nrow=d,ncol=d))^(-1/2)*						
           exp((-1/2)*t(x-psi_pa[t, 1:d])%*%diag((psi_pa[t, (d+1):(d+d)])^(-1), nrow=d,ncol=d)%*%						
                 (x-psi_pa[t, 1:d]))
       }
@@ -178,7 +178,10 @@ library(profvis)
     
     Psi <- function(l, n, X_apf, N){
       psi <- matrix(NA, nrow = Time, ncol = N[l])
+      #psi_try <- matrix(NA, nrow = Time, ncol = N[l])
       psi_pa <- matrix(NA, nrow = Time, ncol = 2*d)
+      #psi_pa_try <- matrix(NA, nrow = Time, ncol = 2*d)
+      #psi_pa_cov <- matrix(nrow = d, ncol = d)
       #calculate psi
       for(t in n:(n-L+1)){
         
@@ -186,15 +189,36 @@ library(profvis)
         
         if(t == n){
           
-          psi[t,] <- dmvnorm(X_apf[t,1:N[l],], obs[t,])   #top 1
+          psi[t,] <- dmvnorm(X_apf[t,1:N[l],], obs[t,])
+          #psi_pa_try[t,1:d] <- solve(C)%*%obs[t,]  #all var be diag matrices?
+          #psi_pa_cov <- solve(t(C)%*%solve(D)%*%C)
+          #psi_try[t,] <- psi[t,]#top 1
           
         }else{ #top4
           for(i in 1:N[l]){
-            psi[t,i] <- g(obs[t,],X_apf[t,i,])*dmvnorm(as.vector(A%*%X_apf[t,i,]), 
+            #psi_try[t,i] <- g(obs[t,],X_apf[t,i,])%*%dmvnorm(as.vector(A%*%X_apf[t,i,]), 
+                                                         #psi_try[t+1, i], psi_try[t+1, i]+1) 
+            #recursive: do backward smoothing, calculate the moment of gaussians directly
+            psi[t,i] <- g(obs[t,],X_apf[t,i,])%*%dmvnorm(as.vector(A%*%X_apf[t,i,]), 
                                                        psi_pa[t+1, 1:d], diag(psi_pa[t+1, (d+1):(d+d)]+1, nrow=d,ncol=d))
           }
+          #psi_pa_try[t, 1:d] <- solve(t(C)%*%solve(D)%*%C + t(A)%*%solve(psi_pa_cov + B)%*%A)%*%
+           # (t(C)%*%solve(D)%*%obs[t,] + t(A)%*%solve(psi_pa_cov + B)%*%psi_pa_try[t+1, 1:d])
           
+            
+      #t(A)%*%solve(psi_pa_cov)%*%psi_pa_try[t+1, 1:d]
+            
+            #solve(t(C)%*%solve(D)%*%C + t(A)%*%solve(psi_pa_cov)%*%A)%*%
+            #(t(C)%*%solve(D)%*%obs[t,] + t(A)%*%solve(psi_pa_cov)%*%psi_pa_try[t+1, 1:d])
+          #psi_pa_cov <- solve(t(C)%*%solve(D)%*%C+t(A)%*%solve(psi_pa_cov + B)%*%A)
+            
+            #solve(t(C)%*%solve(D)%*%C+t(A)%*%solve(psi_pa_cov)%*%A)
+          #N(Ax, psi.mean,psi.var^2+1)
         }
+        
+          #x[1:d] <- sum(psi[t,]%*%X_apf[t,,])/sum(psi[t,])
+          #x[(d+1):(d+d)] <- sum(psi[t,]%*%(X_apf[t,,] - x[1:d])^2)/sum(psi[t,])
+        
         #dmvnorm和dnorm的方差不一样
         #2. calculate psi_t
         #calculate min
@@ -209,17 +233,19 @@ library(profvis)
         if(t == n){  #top2
           psi_pa[t,] <- optim(par = c(colMeans(X_apf[t,1:N[l],]), rep(1, d)),
                               fn = fn, X_apf = X_apf, psi = psi, method='L-BFGS-B',
-                              lower=c(rep(-10, d),rep(0.1, d)), upper=rep(10, 2*d))$par
+                              lower=c(rep(-Inf, d),rep(0.1, d)), upper=rep(Inf, 2*d))$par
         }else{
           
           psi_pa[t,] <- optim(par = c(X_apf[t,which.max(psi[t,1:N[l]]),], rep(1, d)), 
                               fn = fn, X_apf = X_apf, psi = psi, method='L-BFGS-B',
-                              lower=c(rep(-10, d),rep(0.1, d)), upper=rep(10, 2*d))$par
+                              lower=c(rep(-Inf, d),rep(0.1, d)), upper=rep(Inf, 2*d))$par
         }
         
-        print(psi_pa[t, 1:d])
+        print(paste0('psi_pa=', psi_pa[t, 1:d]))
+        #print(paste0('psi_pa_try=', psi_pa_try[t, 1:d]))
         print(obs[t,])
       }
+      
       return(psi_pa)
     }
     
@@ -353,7 +379,7 @@ library(profvis)
     psi.now <- output[[3]]
     Z <- output[[4]]
     
-    if(ncol(X) > Num){
+    if(ncol(X) >= Num){
       mx <- max(w[n,])
       w_ <- exp(w[n,]-mx)/sum(exp(w[n,] - mx))
       mix <- sample(1:ncol(X), size=Num, replace = TRUE, prob = w_)
@@ -407,7 +433,7 @@ library(profvis)
         G_ <- rep(0,Num)
         G <- rep(0,Num)
         
-        X_ <- array(X_, dim = c(Time, Num, d))
+        #X_ <- array(X_, dim = c(Time, Num, d))
         for(p in (n-L+1):n){
           for(i in 1:Num){
             X_[p,i,] <- f_aux(X_[p-1, i,], psi_pa, p)  #-1 or +1??
@@ -415,7 +441,7 @@ library(profvis)
         }
         
         for(i in 1:Num){
-          BF[i] <- log(as.numeric(det(diag(2*pi, nrow = d, ncol = d))^(-1/2)*
+          BF[i] <- log(as.numeric((2*pi)^(-d/2)*
                                     exp((-1/2)*t(X_[n,i,]-A%*%X_[n-1,i,])%*%(X_[n,i,]-A%*%X_[n-1,i,]))))
           G[i] <- log(g(obs[n,], X_[n,i,]))
           
@@ -426,27 +452,28 @@ library(profvis)
                               diag((psi_pa[n, (d+1):(d+d)]+1)^(-1), nrow=d,ncol=d), log = TRUE)
         }
         
-        X <- array(X, dim = c(Time, Num, d))
+        #X <- array(X, dim = c(Time, Num, d))
         for(p in (n-L+1):(n-1)){
           for(i in 1:Num){
             #fg_ time to n-1
-            BF[i] <- BF[i] + log(as.numeric(det(diag(2*pi, nrow = d, ncol = d))^(-1/2)*
+            BF[i] <- BF[i] + log(as.numeric((2*pi)^(-d/2)*
                                               exp((-1/2)*t(X_[p,i,]-A%*%X_[p-1,i,])%*%(X_[p,i,]-A%*%X_[p-1,i,]))))
             
-            f_[i] <- f_[i] + log(as.numeric(det(diag(2*pi, nrow = d, ncol = d))^(-1/2)*
+            f_[i] <- f_[i] + log(as.numeric((2*pi)^(-d/2)*
                                               exp((-1/2)*t(X[p,i,]-A%*%X[p-1,i,])%*%(X[p,i,]-A%*%X[p-1,i,]))))
             
-            G[i] <- G[i] + log(as.numeric(det(diag(2*pi, nrow = d, ncol = d))^(-1/2)*
+            G[i] <- G[i] + log(as.numeric((2*pi)^(-d/2)*
                                             exp((-1/2)*t(obs[p,]-C%*%X_[p,i,])%*%(obs[p,]-C%*%X_[p,i,]))))
             
-            G_[i] <- G_[i] + log(as.numeric(det(diag(2*pi, nrow = d, ncol = d))^(-1/2)*
+            G_[i] <- G_[i] + log(as.numeric((2*pi)^(-d/2)*
                                               exp((-1/2)*t(obs[p,]-C%*%X[p,i,])%*%(obs[p,]-C%*%X[p,i,]))))
             
             #N(psi.mean,psi.var)*f
             f.psi_[i] <- f.psi_[i] + dmvnorm(X[p,i,], as.vector((diag(psi.before[p, (d+1):(d+d)], d, d)%*%A%*%X[p-1,i,] + psi.before[p,1:d]))%*%
                                              diag((psi.before[p, (d+1):(d+d)]+1)^(-1), d, d),
-                                           diag(psi.before[p, (d+1):(d+d)], d, d)%*%
+                                         diag(psi.before[p, (d+1):(d+d)], d, d)%*%
                                                   diag((psi.before[p, (d+1):(d+d)]+1)^(-1), d, d), log = TRUE)
+           # f.psi_[i] <- f.psi_[i] + dmvnorm(X[p,i,], as.vector(A%*%psi.before[p,1:d]), B + t(A)%*%diag(psi.before[p, (d+1):(d+d)], d, d)%*%A, log = TRUE)
             
             f.psi[i] <- f.psi[i] + dmvnorm(X_[p,i,], as.vector((diag(psi_pa[p, (d+1):(d+d)], d, d)%*%A%*%X_[p-1,i,] + psi_pa[p,1:d]))%*%
                                            diag((psi_pa[p, (d+1):(d+d)]+1)^(-1), d, d),
@@ -476,7 +503,7 @@ library(profvis)
     final[index] <- exp(Z-fkf.obj)
     index = index + 1
     
-  }
+  #}
 
 
 filename=paste0('L=',L,'_',(seed.label-1)%%50+1,'.csv') 

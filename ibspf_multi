@@ -178,11 +178,9 @@ library(FKF)
     
     Psi <- function(l, n, X_apf, N){
       psi <- matrix(NA, nrow = Time, ncol = N[l])
-      #psi_try <- matrix(NA, nrow = Time, ncol = N[l])
+    
       psi_pa <- matrix(NA, nrow = Time, ncol = 2*d)
-      #psi_pa_try <- matrix(NA, nrow = Time, ncol = 2*d)
-      #psi_pa_cov <- matrix(nrow = d, ncol = d)
-      #calculate psi
+     
       for(t in n:(n-L+1)){
         
         #print(t)
@@ -190,38 +188,18 @@ library(FKF)
         if(t == n){
           
           psi[t,] <- dmvnorm(X_apf[t,1:N[l],], obs[t,])
-          #psi_pa_try[t,1:d] <- solve(C)%*%obs[t,]  #all var be diag matrices?
-          #psi_pa_cov <- solve(t(C)%*%solve(D)%*%C)
-          #psi_try[t,] <- psi[t,]#top 1
+         
           
         }else{ #top4
           for(i in 1:N[l]){
-            #psi_try[t,i] <- g(obs[t,],X_apf[t,i,])%*%dmvnorm(as.vector(A%*%X_apf[t,i,]), 
-                                                         #psi_try[t+1, i], psi_try[t+1, i]+1) 
-            #recursive: do backward smoothing, calculate the moment of gaussians directly
-            psi[t,i] <- g(obs[t,],X_apf[t,i,])%*%dmvnorm(as.vector(A%*%X_apf[t,i,]), 
+            
+            psi[t,i] <- g(obs[t,],X_apf[t,i,])*dmvnorm(as.vector(A%*%X_apf[t,i,]), 
                                                        psi_pa[t+1, 1:d], diag(psi_pa[t+1, (d+1):(d+d)]+1, nrow=d,ncol=d))
           }
-          #psi_pa_try[t, 1:d] <- solve(t(C)%*%solve(D)%*%C + t(A)%*%solve(psi_pa_cov + B)%*%A)%*%
-           # (t(C)%*%solve(D)%*%obs[t,] + t(A)%*%solve(psi_pa_cov + B)%*%psi_pa_try[t+1, 1:d])
-          
-            
-      #t(A)%*%solve(psi_pa_cov)%*%psi_pa_try[t+1, 1:d]
-            
-            #solve(t(C)%*%solve(D)%*%C + t(A)%*%solve(psi_pa_cov)%*%A)%*%
-            #(t(C)%*%solve(D)%*%obs[t,] + t(A)%*%solve(psi_pa_cov)%*%psi_pa_try[t+1, 1:d])
-          #psi_pa_cov <- solve(t(C)%*%solve(D)%*%C+t(A)%*%solve(psi_pa_cov + B)%*%A)
-            
-            #solve(t(C)%*%solve(D)%*%C+t(A)%*%solve(psi_pa_cov)%*%A)
-          #N(Ax, psi.mean,psi.var^2+1)
+        
         }
         
-          #x[1:d] <- sum(psi[t,]%*%X_apf[t,,])/sum(psi[t,])
-          #x[(d+1):(d+d)] <- sum(psi[t,]%*%(X_apf[t,,] - x[1:d])^2)/sum(psi[t,])
-        
-        #dmvnorm和dnorm的方差不一样
-        #2. calculate psi_t
-        #calculate min
+      
         fn <- function(x, X_apf, psi){
           lambda <-  sum(dmvnorm(X_apf[t,1:N[l],],x[1:d],
                                  diag(x[(d+1):(d+d)], nrow=d,ncol=d))%*%psi[t,1:N[l]])/sum(psi[t,1:N[l]]^2) #2* or not 2*?
@@ -229,7 +207,7 @@ library(FKF)
                                                          x[1:d],diag(x[(d+1):(d+d)], nrow=d,ncol=d)))^2))
         }#change 2 dmvnorm to dnorm
         
-        #get the distribution of psi_t
+        
         if(t == n){  #top2
           psi_pa[t,] <- optim(par = c(colMeans(X_apf[t,1:N[l],]), rep(1, d)),
                               fn = fn, X_apf = X_apf, psi = psi, method='L-BFGS-B',
@@ -242,7 +220,7 @@ library(FKF)
         }
         
         print(paste0('psi_pa=', psi_pa[t, 1:d]))
-        #print(paste0('psi_pa_try=', psi_pa_try[t, 1:d]))
+        
         print(obs[t,])
       }
       
@@ -344,15 +322,7 @@ library(FKF)
         w[1,] <- log((2*pi*(1+D))^(-1/2)*exp((-1/2)*(obs[1])^2/(1+D)))  #pass
         
       }else{
-        
-        #fkf.mu <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L,]))$att
-        #fkf.var <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L,]))$Ptt
-        #X[L,,] <- mvrnorm(Num, fkf.mu[L], sqrt(fkf.var[L]))
-        #for(p in (L-1):1){
-        # for(i in 1:N){
-        # X[p,i,] <- mvrnorm(1, (A%*%X[p+1,i,]*fkf.var[p] + fkf.mu[p])/(t(A)%*%A*fkf.var[p] + 1),sqrt(fkf.var[p]/(t(A)%*%A*fkf.var[p] + 1)))
-        #} #pass
-        #}
+      
         
         output <- init_APF()
         X_apf <- output[[1]]
@@ -366,7 +336,7 @@ library(FKF)
         X <- output2[[2]]
         w <- output2[[3]]
         Z <- output2[[4]]
-        #w[L,] <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs[1:L,]))$logLik  #pass
+      
         
       }
       return(list(X=X, w=w, psi.now=psi.now, Z = Z))
@@ -374,7 +344,7 @@ library(FKF)
     
     output <- Init()
     X <- output[[1]]
-    #X <- array(X, dim = c(Time, Num, d))
+   
     w <- output[[2]]
     psi.now <- output[[3]]
     Z <- output[[4]]

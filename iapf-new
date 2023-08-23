@@ -5,13 +5,13 @@ library(FKF)
 set.seed(123)
 library(FKF)
 final <- vector()
-Num <- 100
+Num <- 1000
 N <- vector()
 N[1] <- Num
-Time = 50
+Time = 100
 #L_candidate=c(1,2,3,5,7,9)
 #L=L_candidate[(seed.label-1)%/%5+1]
-L = 30
+L = 2
 A = 0.42
 B = 1
 C = 1
@@ -27,6 +27,7 @@ Tt <- as.matrix(A)
 P0 <- Zt <- Ht <- Gt <- as.matrix(1)
 a0 <- 0
 index <- 1
+avg <- matrix(nrow = 1, ncol = Time)
 
 Obs <- function(){
   X_true[1] <- rnorm(1)   
@@ -57,7 +58,10 @@ obs <- Obs()
     return(ess)  
   }
   
-  fkf.obj <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs))$logLik
+  fkf.obj <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs))
+  fks.obj <- fks(fkf.obj)
+  fks_mean <- fks.obj$ahatt[,Time]
+  fks_var <- fks.obj$Vt[,,Time]
   
   f <- function(x){
     return (rnorm(d) + as.vector(A*x))   #trans prob
@@ -119,20 +123,20 @@ obs <- Obs()
     for(i in 1:Num){
       sample[i] <- rnorm(1, mean = A*mus[s[i]], B)
     }
-    return(sample)
+    return(list(sample, w_))
   }
   
-  change_mupsi <- function(w, X, psi_pa, t){
+  change_mupsi <- function(w, X, psi_pa, t, N, l){
     sample <- vector()
     mx <- max(w[n-1,])
     w_ <- exp(w[n-1,]-mx)/sum(exp(w[n-1,] - mx))
-    s <- sample(1:Num, size = Num, replace = TRUE, prob = w_
-                ) 
+    s <- sample(1:Num, size = Num, replace = TRUE, prob = w_) 
     mus <- X[n-L,]
-    for(i in 1:Num){
+    for(i in 1:N[l]){
       sample[i] <- f_aux(mus[s[i]], psi_pa, t)
+      
     }
-    return(sample)
+    return(list(sample, w_))
   }
   
   ####APF####
@@ -187,12 +191,15 @@ obs <- Obs()
     w_apf <- matrix(NA, Time, N[l])
     Z_apf[l] <- 0
     
-    X_apf[n-L+1,1:N[l]] <- change_mupsi(w, X, psi_pa, n-L+1)
-    
-    for(i in 1:N[l]){
-      w_apf[n-L+1,i] <- dnorm(obs[n-L+1], (psi_pa[n-L+1,2]^2*A*X_apf[n-L+1,i] +psi_pa[n-L+1,1])/(psi_pa[n-L+1,2]^2+1), 
-                              sqrt(psi_pa[n-L+1,2]^2 / (psi_pa[n-L+1,2]^2+1)), log = TRUE)
+    X_apf[n-L+1,1:N[l]] <- change_mupsi(w, X, psi_pa, n-L+1, N, l)[[1]]
+    w_ <- change_mupsi(w, X, psi_pa, n-L+1, N, l)[[2]]
+    #w_apf[n-L+1, ] <- log(sum(exp(w[n-1,])*dnorm(X_apf[n-L+1,], (psi_pa[n-L+1,2]^2*A*X[n-L,] +psi_pa[n-L+1,1])/(psi_pa[n-L+1,2]^2+1),
+     #                                             sqrt(psi_pa[n-L+1,2]^2 / (psi_pa[n-L+1,2]^2+1)))))
+    for (i in 1:N[l]){
+      w_apf[n-L+1, i] <- log(sum(w_*dnorm(X_apf[n-L+1,], (psi_pa[n-L+1,2]^2*A*X[n-L,i] +psi_pa[n-L+1,1])/(psi_pa[n-L+1,2]^2+1),
+                                                    sqrt(psi_pa[n-L+1,2]^2 / (psi_pa[n-L+1,2]^2+1)))))
     }
+    
     re=0
     #t=2:T
     #2. conditional sample
@@ -238,7 +245,7 @@ obs <- Obs()
       #print(t)
       
       if(t == n){
-        psi[t,] <- dnorm(X_apf[t,1:N[l]], obs[t])   
+        psi[t,] <- dnorm(X_apf[t,1:N[l]], obs[t], D)   
         
       }else{
         psi[t,] <- dnorm(X_apf[t,], obs[t])*dnorm(A*X_apf[t,], psi_pa[t+1, 1], sqrt(psi_pa[t+1,2]^2+1))
@@ -352,8 +359,12 @@ obs <- Obs()
     X_init <- matrix(NA, Time, N[l])
     w_init <- matrix(NA, Time, N[l])
     
-    X_init[n-L+1,] <- change_mu(w, X)
-    w_init[n-L+1,] <- dnorm(X_init[n-L+1,],obs[n-L+1], log = TRUE)
+    X_init[n-L+1,] <- change_mu(w, X)[[1]]
+    w_ <- change_mu(w, X)[[2]]
+    #w_init[n-L+1, ] <- log(sum(exp(w[n-1,])*dnorm(X_init[n-L+1,], A*X[n-L,], B)))
+    for (i in 1:Num){
+      w_init[n-L+1, i] <- log(sum(w_*dnorm(X_init[n-L+1,], A*X[n-L,i], B)))
+    }
     
     for(t in (n-L+2):n){
       
@@ -420,14 +431,23 @@ obs <- Obs()
     Z_apf <- output[[3]]
     
     output2 <- psi_APF(n, X_apf, Z_apf, w, X)
+    
     X <- output2[[2]]
     w <- output2[[3]]
     #Z <- output2[[4]]  #低了点
   } #results of weights are strange
   mx <- max(w[Time,]) #逐渐增加？
-  
   Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
-  print(exp(Z-fkf.obj))
-  final[index] <- exp(Z-fkf.obj)
-  index = index + 1
+  
+  w_ <- exp(w[Time,]-mx)/sum(exp(w[Time,] - mx))
+  weighted_mean <- sum(w_*X[Time,])
+  s_mean <- sum(w_*X[Time,]^2)
+  variance <- s_mean - weighted_mean^2
+  
+  for (t in 1:Time){
+    avg[index, t] <- length(unique(X[t,]))
+  }
+  #print(exp(Z-fkf.obj))
+  #final[index] <- exp(Z-fkf.obj)
+  #index = index + 1
   

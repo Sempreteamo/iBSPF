@@ -1,18 +1,18 @@
 library(mvnfast)
 library(MASS)
 library(FKF)
-
-start = proc.time()
+seed.label<-as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+#start = proc.time()
 set.seed(123)
 library(FKF)
 final <- vector()
-Num <- 5000
+Num <- 500
 N <- vector()
 N[1] <- Num
 Time = 50
 #L_candidate=c(1,2,3,5,7,9)
 #L=L_candidate[(seed.label-1)%/%5+1]
-L = 40
+L = 5
 alpha = 0.42
 d = 10
 k <- 5
@@ -112,7 +112,7 @@ psi_tilda <- function(x, psi_pa, t, n){  #from 0 to T. 0,T = 1
   }else{   #psi_pa_t = psi_t
     psi_tilda <- (2*pi)^(-d/2)*det(diag(psi_pa[t+1, (d+1):(d+d)]+1, nrow=d, ncol=d))^(-1/2)*
       exp((-1/2)*t(as.vector(A%*%x) - psi_pa[t+1, 1:d])%*%diag((psi_pa[t+1, (d+1):(d+d)]+1)^(-1), nrow=d,ncol=d)%*%
-            (as.vector(A%*%x)-psi_pa[t+1, 1:d])) #f(xt, 脙聫脗聢t+1 )   #var should be psi^2+1?
+            (as.vector(A%*%x)-psi_pa[t+1, 1:d])) #f(xt, 鑴欒伀鑴楄仮t+1 )   #var should be psi^2+1?
   }
   return(psi_tilda)
 }
@@ -153,6 +153,33 @@ change_mupsi <- function(w, X, psi_pa, t, N, l){
   return(list(sample, w_))
 }
 
+SR <- function(t, w) {
+  indices <- integer(length(w[t-1,]))
+  mx <- max(w[t-1,])
+  w_ <- exp(w[t-1,]-mx)/sum(exp(w[t-1,] - mx))
+  mix <- vector()
+  
+  U <- runif(1,0, 1/Num)
+  s <- 0
+  
+  for (m in 1:ncol(X)) {
+    k <- 0
+    s <- s + w_[m]
+    while (s > U) {
+      k <- k + 1
+      U <- U + 1/Num
+    }
+    indices[m] <- k
+  }
+  
+  for(i in 1:ncol(X)){
+    if(indices[i] > 0){
+      mix <- c(mix, rep(i, indices[i]))
+    }
+  }
+  return(mix)
+}
+
 ####APF####
 APF <- function(psi_pa, l, Z_apf, N){
   #l >= 2
@@ -174,10 +201,7 @@ APF <- function(psi_pa, l, Z_apf, N){
     
     if(ESS(t,w_apf, is.log = TRUE) <= kappa*N[l]){
       
-      mx <- max(w_apf[t-1,])
-      w_ <- exp(w_apf[t-1,1:N[l]]-mx)/sum(exp(w_apf[t-1, 1:N[l]] - mx))
-      Z_apf[l] = Z_apf[l] + log(mean(exp(w_apf[t-1,]-mx))) + mx
-      mix <- sample(1:N[l],N[l], replace = TRUE, prob = w_)
+      mix <- SR(t, w_apf)
       
       for(i in 1:N[l]){
         X_apf[t,i,] <- f_aux(X_apf[t-1, mix[i],], psi_pa, t)
@@ -221,10 +245,7 @@ APF_changemu <- function(w, X, psi_pa, l, Z_apf, N){
     
     if(ESS(t,w_apf, is.log = TRUE) <= kappa*N[l]){
       
-      mx <- max(w_apf[t-1,])
-      w_ <- exp(w_apf[t-1,1:N[l]]-mx)/sum(exp(w_apf[t-1, 1:N[l]] - mx))
-      Z_apf[l] = Z_apf[l] + log(mean(exp(w_apf[t-1,]-mx))) + mx
-      mix <- sample(1:N[l],N[l], replace = TRUE, prob = w_)
+      mix <- SR(t, w_apf)
       
       for(i in 1:N[l]){
         X_apf[t,i,] <- f_aux(X_apf[t-1, mix[i],], psi_pa, t)
@@ -316,10 +337,7 @@ init_APF <- function(){
     
     if(ESS(t,w_init, is.log=TRUE) <= kappa*N[l]){
       
-      mx <- max(w_init[t-1,])
-      w_ <- exp(w_init[t-1,]-mx)/sum(exp(w_init[t-1,] - mx))
-      Z_apf[1] = Z_apf[1] + log(mean(exp(w_init[t-1,] - mx))) + mx
-      mix <- sample(1:N[l],N[l], replace = TRUE, prob = w_)
+      mix <- SR(t, w_init)
       
       for(i in 1:N[l]){
         X_init[t,i,] <- f(X_init[t-1,mix[i],]) 
@@ -360,10 +378,7 @@ init_changemu <- function(w, X){
     
     if(ESS(t,w_init, is.log=TRUE) <= kappa*N[l]){
       
-      mx <- max(w_init[t-1,])
-      w_ <- exp(w_init[t-1,]-mx)/sum(exp(w_init[t-1,] - mx))
-      Z_apf[1] = Z_apf[1] + log(mean(exp(w_init[t-1,] - mx))) + mx
-      mix <- sample(1:N[l],N[l], replace = TRUE, prob = w_)
+      mix <- SR(t, w_init)
       
       for(i in 1:N[l]){
         X_init[t,i,] <- f(X_init[t-1,mix[i],]) 
@@ -456,10 +471,7 @@ for(n in (L+1):Time){
   
   if(ESS(n,w, is.log = TRUE) <= kappa*Num){
     re = re + 1
-    mx <- max(w[n-1,])
-    w_ <- exp(w[n-1,]-mx)/sum(exp(w[n-1,] - mx))
-    #Z = Z + log(mean(exp(w[n-1,]-mx))) + mx
-    s <- sample(1:Num, size=Num, replace=TRUE, prob=w_) 
+    s <- SR(n, w)
     X <- X[,s,]
     w <- w[,s]
   }
@@ -484,25 +496,11 @@ w_ <- exp(w[Time,]-mx)/sum(exp(w[Time,] - mx))
 weighted_mean <- colSums(w_*X[Time,,])
 covariance <- cov(X[Time,,])
 
-
 weighted_mean
 fks_mean
 det(covariance)
 det(fks_cov)
-#sqrt(sum((weighted_mean - fks_mean)^2))
-mahalanobis(weighted_mean, fks_mean, fks_cov)/d
-
-mx <- max(w[Time-L+1,]) 
-#Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
-w_ <- exp(w[Time-L+1,]-mx)/sum(exp(w[Time-L+1,] - mx))
-weighted_mean <- colSums(w_*X[Time-L+1,,])
-covariance <- cov(X[Time-L+1,,])
-
-mx <- max(w[Time-L/2,]) 
-#Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
-w_ <- exp(w[Time-L/2,]-mx)/sum(exp(w[Time-L/2,] - mx))
-weighted_mean <- colSums(w_*X[Time-L/2,,])
-covariance <- cov(X[Time-L/2,,])
+mahalanobis(weighted_mean, fks_mean, fks_cov)
 
 proc.time() - start
 for (t in 1:Time){

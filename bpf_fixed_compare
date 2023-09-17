@@ -2,7 +2,10 @@ library(mvnfast)
 start = proc.time()
 set.seed(123)
 library(FKF)
-d=35
+seed.label<-as.numeric(Sys.getenv("SLURM_ARRAY_TASK_ID"))
+seed.label <- 1
+d=40
+L=80
 Num <- 50000
 Time = 100
 alpha = 0.42
@@ -21,11 +24,9 @@ a0 <- rep(0,d)
 
 X_true <- matrix(NA, Time, d)
 final2 <- vector()
-
-#avg <- matrix(nrow=50, ncol=Time)
 Obs <- function(){
   #set.seed(seed)
-  X_true[1,] <- rnorm(d) 
+  X_true[1,] <- rnorm(d)
   for(t in 2:Time){  #observations
     #set.seed(seed)
     X_true[t,] <- rnorm(d) + as.vector(A%*%X_true[t-1,])  #t(rnorm(d) + A%*%x)
@@ -39,12 +40,12 @@ obs <- Obs()
 
 fkf.obj <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs))
 fks.obj <- fks(fkf.obj)
-fks_mean <- fks.obj$ahatt[,Time]
-fks_cov <- fks.obj$Vt[,,Time]
+fks_mean <- fks.obj$ahatt[,Time-L+L/2]
+fks_cov <- fks.obj$Vt[,,Time-L+L/2]
 
-for(qq in 1:1){
+for(qq in ((seed.label-1)%%50+1):((seed.label-1)%%50+1)){
   set.seed(qq)
-  print(qq)
+  #print(qq)
   
   
   X <- array(NA, dim = c(Time, Num, d))
@@ -70,8 +71,6 @@ for(qq in 1:1){
       X[t,i,] <- rmvn(1, as.vector(A%*%X[t-1,i,]), B)
       w[t,i] <-  dmvn(obs[t,], X[t,i,], D, log = TRUE)
     }
-    
-    
     mx <- max(w[t, ])
     #Z <- Z + log(mean(exp(w[t, ]-mx))) + mx
     w_ <- exp(w[t,]-mx)/sum(exp(w[t,] - mx))
@@ -83,16 +82,14 @@ for(qq in 1:1){
     
     
   }
-  mx <- max(w[Time,]) 
+  mx <- max(w[Time-L+L/2,])
   #Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
-  w_ <- exp(w[Time,]-mx)/sum(exp(w[Time,] - mx))
-  weighted_mean <- colSums(w_*X[Time,,])
-  covariance <- cov(X[Time,,])
+  w_ <- exp(w[Time-L+L/2,]-mx)/sum(exp(w[Time-L+L/2,] - mx))
+  weighted_mean <- colSums(w_*X[Time-L+L/2,,])
+  covariance <- cov(X[Time-L+L/2,,])
   mahalanobis(weighted_mean, fks_mean, fks_cov)/d
   final2[index] <- mahalanobis(weighted_mean, fks_mean, fks_cov)/d
   index = index + 1
   
 }
 proc.time() - start
-
-write.csv(final2, file = "BPF.csv")

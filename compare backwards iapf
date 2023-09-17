@@ -13,9 +13,9 @@ N[1] <- Num
 Time = 100
 #L_candidate=c(1,2,3,5,7,9)
 #L=L_candidate[(seed.label-1)%/%5+1]
-L = 50
+L = 40
 alpha = 0.42
-d = 20
+d = 40
 k <- 5
 tau <- 0.5
 kappa = 0.5
@@ -69,8 +69,8 @@ for(qq in 1:1){
   
   fkf.obj <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs))
   fks.obj <- fks(fkf.obj)
-  fks_mean <- fks.obj$ahatt[,Time-L+1]
-  fks_cov <- fks.obj$Vt[,,Time-L+1]
+  fks_mean <- fks.obj$ahatt[,Time-L+L/2]
+  fks_cov <- fks.obj$Vt[,,Time-L+L/2]
   
   f <- function(x){
     return (rnorm(d) + as.vector(A%*%x))   #trans prob
@@ -183,7 +183,7 @@ for(qq in 1:1){
         X_apf[1:(t-1),,] <- X_apf[1:(t-1),mix,]
         
         for(i in 1:N[l]){
-          X_apf[t,i,] <- f_aux(X_apf[t-1, mix[i],], psi_pa, t)
+          X_apf[t,i,] <- f_aux(X_apf[t-1, i,], psi_pa, t)
           w_apf[t,i] <- log(g_aux(obs[t,], X_apf[t,i,], t, psi_pa, n))  
         }
       }else{
@@ -231,7 +231,7 @@ for(qq in 1:1){
         X_apf[1:(t-1),,] <- X_apf[1:(t-1),mix,]
         
         for(i in 1:N[l]){
-          X_apf[t,i,] <- f_aux(X_apf[t-1, mix[i],], psi_pa, t)
+          X_apf[t,i,] <- f_aux(X_apf[t-1, i,], psi_pa, t)
           w_apf[t,i] <- log(g_aux(obs[t,], X_apf[t,i,], t, psi_pa, n))  
         }
       }else{
@@ -328,7 +328,7 @@ for(qq in 1:1){
         X_init[1:(t-1),,] <- X_init[1:(t-1),mix,]
         
         for(i in 1:N[l]){
-          X_init[t,i,] <- f(X_init[t-1,mix[i],]) 
+          X_init[t,i,] <- f(X_init[t-1,i,]) 
           w_init[t,i] <- log(g(obs[t,], X_init[t,i,]))  
         }
         
@@ -373,7 +373,7 @@ for(qq in 1:1){
         X_init[1:(t-1),,] <- X_init[1:(t-1),mix,]
         
         for(i in 1:N[l]){
-          X_init[t,i,] <- f(X_init[t-1,mix[i],]) 
+          X_init[t,i,] <- f(X_init[t-1,i,]) 
           w_init[t,i] <- log(g(obs[t,], X_init[t,i,]))  
         }
         
@@ -458,15 +458,16 @@ for(qq in 1:1){
   re = 0
   
   ####Algorithm####
-  for(n in seq(100,100,50)){
+  for(n in seq(80,100,20)){
     #print(n)
+    
     mx <- max(w[n-L,])
     s <- sum(exp(w[n-L,]-mx))
     ess <- 1/sum((exp(w[n-L,]-mx)/s)^2)
     
     if(ess<= kappa*Num){
       re = re + 1
-      mx <- max(w[n-L,])
+      #mx <- max(w[n-L,])
       w_ <- exp(w[n-L,]-mx)/sum(exp(w[n-L,] - mx))
       #Z = Z + log(mean(exp(w[n-1,]-mx))) + mx
       s <- sample(1:Num, size=Num, replace=TRUE, prob=w_) 
@@ -489,20 +490,17 @@ for(qq in 1:1){
     
     
   } 
-  mx <- max(w[Time-L+1,]) 
+  mx <- max(w[Time-L+L/2,]) 
   #Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
-  w_ <- exp(w[Time-L+1,]-mx)/sum(exp(w[Time-L+1,] - mx))
-  weighted_mean <- colSums(w_*X[Time-L+1,,])
-  covariance <- cov.wt(X[Time-L+1,,], w_)
+  w_ <- exp(w[Time-L+L/2,]-mx)/sum(exp(w[Time-L+L/2,] - mx))
+  weighted_mean <- colSums(w_*X[Time-L+L/2,,])
+  covariance <- cov.wt(X[Time-L+L/2,,], w_)
+  mahalanobis(weighted_mean, fks_mean, fks_cov)/d
+}  
+proc.time() - start
+  weighted_mean
+  fks_mean
   
-  fks_mean <- fks.obj$ahatt[,Time]
-  fks_cov <- fks.obj$Vt[,,Time]
-  
-  mx <- max(w[Time,]) 
-  #Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
-  w_ <- exp(w[Time,]-mx)/sum(exp(w[Time,] - mx))
-  weighted_mean <- colSums(w_*X[Time,,])
-  covariance <- cov(X[Time,,])
   
   det(covariance)
   det(fks_cov)
@@ -510,5 +508,5 @@ for(qq in 1:1){
   #mahalanobis(weighted_mean, fks_mean, fks_cov)/d
   final[index] <- mahalanobis(weighted_mean, fks_mean, fks_cov)/d
   index = index+1
-}
-proc.time() - start
+
+

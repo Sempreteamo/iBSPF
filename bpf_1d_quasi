@@ -1,0 +1,91 @@
+start = proc.time()
+set.seed(123)
+library(FKF)
+A = 0.42
+dt <- ct <- matrix(0,1,1)
+Tt <- as.matrix(A)
+P0 <- Zt <- Ht <- Gt <- diag(1,1,1)
+a0 <- rep(0,1)
+
+X_true <- vector()
+final <- vector()
+Num <- 50000
+Time = 100
+
+
+B = 1
+C = 1
+D = 1
+d = 1
+
+#avg <- matrix(nrow=50, ncol=Time)
+Obs <- function(){
+  X_true[1] <- rnorm(1, 0, 1)   
+  for(t in 2:Time){  #observations
+    X_true[t] <- rnorm(1, A*X_true[t-1], B) 
+  }
+  return(rnorm(Time, C*X_true, D))
+}
+
+index = 1
+obs <- Obs()
+
+#fkf.obj <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs))$logLik
+fkf.obj <- fkf(a0, P0, dt, ct, Tt, Zt, Ht, Gt, yt = t(obs))
+fks.obj <- fks(fkf.obj)
+fks_mean <- fks.obj$ahatt[,Time]
+fks_var <- fks.obj$Vt[,,Time]
+
+for(qq in 1:50){
+  set.seed(qq)
+  
+  
+  
+  X <- matrix(NA, Time, Num)
+  w <- matrix(NA, Time, Num)
+  Z <- 0
+  
+  mix <- matrix(0, Time, Num)
+  
+  X[1,] <- rnorm(Num, 0, 1)
+  w[1,] <- dnorm(obs[1], X[1,], 1, log = TRUE)
+  mx <- max(w[1, ])
+  Z <- Z + log(mean(exp(w[1, ]-mx))) + mx
+  w_ <- exp(w[1,]-mx)/sum(exp(w[1,] - mx))
+  mix[1,] <- sample(1:Num, Num, replace = TRUE, prob = w_)
+  X[1,] <- X[1,mix[1,]]
+  
+  #V[1,] <- rep(1, Num)
+  
+  
+  for (t in 2:Time) {
+    X[t,] <- rnorm(Num, A*X[t-1,], 1)
+    w[t,] <-  dnorm(obs[t], X[t,], 1, log = TRUE)
+    mx <- max(w[t, ])
+    Z <- Z + log(mean(exp(w[t, ]-mx))) + mx
+    w_ <- exp(w[t,]-mx)/sum(exp(w[t,] - mx))
+    mix[t,] <- sort(sample(1:Num, Num, replace = TRUE, prob = w_))
+    X[t,] <- X[t,mix[t,]]
+    
+    #V[t,] <- V[t-1,]
+    #V[t, -unique(I[t-1,mix])] <- t
+    
+    
+  }
+  mx <- max(w[Time,]) #逐渐增加？
+  #Z <- Z + log(mean(exp(w[Time,]-mx))) + mx
+  
+  w_ <- exp(w[Time,]-mx)/sum(exp(w[Time,] - mx))
+  weighted_mean <- sum(w_*X[Time,])
+  s_mean <- sum(w_*X[Time,]^2)
+  variance <- s_mean - weighted_mean^2
+  point1 <- c(fks_mean, fks_var)
+  point2 <- c(s_mean, variance)
+  
+  
+  final[index] <- sqrt(sum((point1 - point2)^2))
+  index = index + 1
+}
+proc.time() - start
+
+#write.csv(avg, file = "avg.csv")

@@ -1,9 +1,9 @@
 #seed.label<-as.numeric(Sys.getenv("SGE_TASK_ID"))
 seed.label <- 1
-set.seed(123)
+set.seed(5675)
 library(FKF)
 final <- vector()
-Num <- 100
+Num <- 500
 N <- vector()
 N[1] <- Num
 Time = 100
@@ -180,7 +180,7 @@ obs <- Obs()
       a <- coef[2]
       b <- coef[3]
       
-      psi_pa1[t,] <- c(exp(b^2/(4*a) - c)*2*a/b, 1/(2*a))
+      psi_pa1[t,] <- c(-b/(2*a), 1/(2*a))
       
       fn <- function(x, X_apf, psi){
         lambda <-  2*sum(dnorm(X_apf[t,1:N[l]],mean=x[1],sd=x[2]) * psi[t,1:N[l]]) / sum(psi[t,]^2)
@@ -197,13 +197,13 @@ obs <- Obs()
                             fn = fn, X = X_apf, psi = psi, method='L-BFGS-B',lower=c(-Inf,0.1),upper=c(Inf,Inf))$par
       }
       
-      #print(psi_pa[t, 1])
-      #print(obs[t])
+      print(psi_pa1[t, 1])
+      print(obs[t])
     }
     
     
     
-    return(psi_pa)
+    return(psi_pa1)
   }
   
   ####init_APF####
